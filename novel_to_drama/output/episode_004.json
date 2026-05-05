@@ -1,0 +1,534 @@
+{
+  "episode_num": 4,
+  "title": "我不是宿主，是病毒",
+  "total_duration": "120 秒",
+  "total_shots": 25,
+  "scenes": [
+    {
+      "scene_num": 1,
+      "location": "黑暗虚无空间",
+      "time": "无",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨"
+      ],
+      "mood": "压抑、神秘",
+      "shots": [
+        {
+          "shot_num": 1,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "楚烨胸口，倒悬玫瑰的银灰色编码剧烈发光，透过深灰色高领衫。",
+          "action": "楚烨踉跄向前，嘴角溢血。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "空灵、压迫的电子音",
+            "sfx": [
+              "沉重的呼吸声",
+              "心跳声"
+            ]
+          }
+        },
+        {
+          "shot_num": 2,
+          "type": "中景",
+          "duration": "4 秒",
+          "visual": "黑暗中，楚烨走向远处一块幽蓝色的悬浮屏幕。周围浮现无数幽蓝色细丝。",
+          "action": "楚烨步履艰难，每一步都强忍痛苦。",
+          "dialogue": {
+            "speaker": "系统音",
+            "content": "欢迎回来，SY-0001。你迟到了二十三年。",
+            "emotion": "冰冷",
+            "note": "非人声，机械合成音"
+          },
+          "camera_movement": "跟随楚烨缓慢前推",
+          "audio": {
+            "bgm": "空灵、压迫的电子音",
+            "sfx": [
+              "沉重的脚步声",
+              "服务器嗡鸣声"
+            ]
+          }
+        },
+        {
+          "shot_num": 3,
+          "type": "特写",
+          "duration": "4 秒",
+          "visual": "幽蓝色屏幕上，原始代码瀑布般倾泻。显示“SY-0001 - 种子”。",
+          "action": "楚烨瞳孔骤缩，死死盯着屏幕。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "紧张弦乐渐起",
+            "sfx": [
+              "代码刷新声",
+              "急促的呼吸声"
+            ]
+          }
+        },
+        {
+          "shot_num": 4,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "楚烨的手颤抖着伸向屏幕。",
+          "action": "指尖触碰屏幕边缘。",
+          "dialogue": null,
+          "camera_movement": "缓慢推近",
+          "audio": {
+            "bgm": "紧张弦乐",
+            "sfx": [
+              "电流声"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 2,
+      "location": "数据深渊/1999年实验室",
+      "time": "无",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨",
+        "SY-0000"
+      ],
+      "mood": "惊骇、诡异",
+      "shots": [
+        {
+          "shot_num": 5,
+          "type": "快速蒙太奇",
+          "duration": "3 秒",
+          "visual": "快速闪现：淡绿色培养舱，悬浮的胚胎，机械臂烙印蓝色条形码。",
+          "action": "画面快速切换。",
+          "dialogue": null,
+          "camera_movement": "快速切换",
+          "audio": {
+            "bgm": "紧张、混乱的电子音",
+            "sfx": [
+              "机械臂运转声",
+              "液体冒泡声"
+            ]
+          }
+        },
+        {
+          "shot_num": 6,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "特写：胚胎锁骨下的蓝色条形码，清晰显示“SY-0001”。",
+          "action": "画面定格。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "紧张弦乐",
+            "sfx": [
+              "尖锐的提示音"
+            ]
+          }
+        },
+        {
+          "shot_num": 7,
+          "type": "中景",
+          "duration": "5 秒",
+          "visual": "数据流退去，角落出现一个被幽蓝数据链贯穿的人影（SY-0000）。胸口是灰黑色的枯萎玫瑰。",
+          "action": "SY-0000抬起头，银灰色的眼睛看向楚烨。",
+          "dialogue": {
+            "speaker": "SY-0000",
+            "content": "你终于看到了。",
+            "emotion": "疲惫、悲悯",
+            "note": "声音直接在脑海中响起"
+          },
+          "camera_movement": "从楚烨摇向SY-0000",
+          "audio": {
+            "bgm": "诡异、空灵",
+            "sfx": [
+              "数据链流动声"
+            ]
+          }
+        },
+        {
+          "shot_num": 8,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "楚烨咬牙，眼神锐利。",
+          "action": "楚烨强忍剧痛，站直身体。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "你是谁？",
+            "emotion": "沙哑、警惕"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "诡异、空灵",
+            "sfx": [
+              "楚烨粗重的呼吸声"
+            ]
+          }
+        },
+        {
+          "shot_num": 9,
+          "type": "中景",
+          "duration": "6 秒",
+          "visual": "SY-0000的身影闪烁。",
+          "action": "SY-0000微微抬头。",
+          "dialogue": {
+            "speaker": "SY-0000",
+            "content": "SY-0000，初代废品。而你，是完美的备份盘。",
+            "emotion": "麻木",
+            "note": "声音在脑海回荡"
+          },
+          "camera_movement": "缓慢推近SY-0000",
+          "audio": {
+            "bgm": "诡异、空灵",
+            "sfx": [
+              "数据链闪烁声"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 3,
+      "location": "数据深渊",
+      "time": "无",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨",
+        "SY-0000"
+      ],
+      "mood": "愤怒、绝望",
+      "shots": [
+        {
+          "shot_num": 10,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "楚烨眼神震惊，闪过沈清冷和白黎的画面残影。",
+          "action": "楚烨的手猛地握紧。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "紧张弦乐加剧",
+            "sfx": [
+              "心跳声加快"
+            ]
+          }
+        },
+        {
+          "shot_num": 11,
+          "type": "中景",
+          "duration": "5 秒",
+          "visual": "SY-0000的数据链微微晃动。",
+          "action": "SY-0000平静地叙述。",
+          "dialogue": {
+            "speaker": "SY-0000",
+            "content": "极致的情感，是催熟端粒的肥料。爱和痛，都是养料。",
+            "emotion": "陈述事实",
+            "note": "声音在脑海回荡"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "紧张弦乐",
+            "sfx": [
+              "数据流声"
+            ]
+          }
+        },
+        {
+          "shot_num": 12,
+          "type": "特写",
+          "duration": "4 秒",
+          "visual": "楚烨面部肌肉紧绷，眼眶泛红（不是哭，是极致的愤怒）。",
+          "action": "楚烨从牙缝里挤出字。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "沈清冷……白黎……都在等我成熟？",
+            "emotion": "愤怒、难以置信"
+          },
+          "camera_movement": "推近",
+          "audio": {
+            "bgm": "沉重、压抑",
+            "sfx": [
+              "楚烨急促的呼吸声"
+            ]
+          }
+        },
+        {
+          "shot_num": 13,
+          "type": "中景",
+          "duration": "5 秒",
+          "visual": "SY-0000的身影更淡了一些。",
+          "action": "SY-0000微微点头。",
+          "dialogue": {
+            "speaker": "SY-0000",
+            "content": "你是沈清冷的长生药。存在的意义，就是被收割。",
+            "emotion": "麻木",
+            "note": "声音在脑海回荡"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "沉重、压抑",
+            "sfx": [
+              "数据链松动声"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 4,
+      "location": "数据深渊",
+      "time": "无",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨",
+        "SY-0000"
+      ],
+      "mood": "疯狂、决绝",
+      "shots": [
+        {
+          "shot_num": 14,
+          "type": "中景",
+          "duration": "4 秒",
+          "visual": "SY-0000的数据链伸向楚烨，仿佛在邀请。",
+          "action": "SY-0000伸出手（虚影）。",
+          "dialogue": {
+            "speaker": "SY-0000",
+            "content": "放弃吧。完成协议，是你唯一的意义。",
+            "emotion": "劝诱"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "低沉、诱惑的旋律",
+            "sfx": [
+              "数据链伸展声"
+            ]
+          }
+        },
+        {
+          "shot_num": 15,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "楚烨低着头，肩膀微微抖动。",
+          "action": "楚烨突然发出一声低笑。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "音乐骤停",
+            "sfx": [
+              "楚烨低沉、疯狂的笑声",
+              "咳血声"
+            ]
+          }
+        },
+        {
+          "shot_num": 16,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "楚烨猛地抬头，眼中燃烧着疯狂的光芒。",
+          "action": "楚烨眼神决绝地看向SY-0000。",
+          "dialogue": null,
+          "camera_movement": "快速推近",
+          "audio": {
+            "bgm": "无",
+            "sfx": [
+              "急促的呼吸声"
+            ]
+          }
+        },
+        {
+          "shot_num": 17,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "楚烨的手粗暴地撕开自己的高领衫，露出剧烈搏动的倒悬玫瑰烙印。",
+          "action": "布料撕裂。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "无",
+            "sfx": [
+              "布料撕裂声",
+              "玫瑰搏动的低沉嗡鸣"
+            ]
+          }
+        },
+        {
+          "shot_num": 18,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "楚烨的手从裤腿处拔出第二支无标签的淡青色稳定剂。",
+          "action": "拿出稳定剂。",
+          "dialogue": null,
+          "camera_movement": "快速下移后固定",
+          "audio": {
+            "bgm": "无",
+            "sfx": [
+              "金属针管摩擦声"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 5,
+      "location": "数据深渊",
+      "time": "无",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨",
+        "SY-0000"
+      ],
+      "mood": "激烈、毁灭",
+      "shots": [
+        {
+          "shot_num": 19,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "针尖对准胸口玫瑰烙印的核心。",
+          "action": "楚烨的手稳如磐石。",
+          "dialogue": null,
+          "camera_movement": "极速推近针尖",
+          "audio": {
+            "bgm": "无",
+            "sfx": [
+              "强烈的心跳声"
+            ]
+          }
+        },
+        {
+          "shot_num": 20,
+          "type": "特写",
+          "duration": "1 秒",
+          "visual": "针头猛地刺入玫瑰中心！",
+          "action": "注射。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "我的底层逻辑，是老子自己写的！",
+            "emotion": "疯狂、嘶吼"
+          },
+          "camera_movement": "剧烈震动",
+          "audio": {
+            "bgm": "激烈、狂暴的电子摇滚骤起",
+            "sfx": [
+              "针头刺入皮肉的闷响",
+              "液体注入声",
+              "楚烨的闷哼"
+            ]
+          }
+        },
+        {
+          "shot_num": 21,
+          "type": "快速蒙太奇",
+          "duration": "4 秒",
+          "visual": "快速闪现：楚烨眼神涣散（放弃防御），红玫瑰倒刺瞬间刺穿心脏的动画示意，银灰色编码逆流注入屏幕。",
+          "action": "画面快速冲击。",
+          "dialogue": {
+            "speaker": "系统音",
+            "content": "警告！基因锁崩溃！排异指数90%！",
+            "emotion": "尖锐、混乱",
+            "note": "带有杂音"
+          },
+          "camera_movement": "快速切换、晃动",
+          "audio": {
+            "bgm": "激烈、狂暴的电子摇滚",
+            "sfx": [
+              "系统警报尖叫",
+              "骨骼碎裂声",
+              "能量逆流声"
+            ]
+          }
+        },
+        {
+          "shot_num": 22,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "楚烨满脸是血，却露出一个快意的笑容。",
+          "action": "楚烨嘴角上扬。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "我不是宿主，是病毒！",
+            "emotion": "快意、决绝"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "音乐达到最高潮后骤停",
+            "sfx": [
+              "楚烨嘶哑的喊声"
+            ]
+          }
+        },
+        {
+          "shot_num": 23,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "幽蓝屏幕爆发刺眼白光，吞噬一切。SY-0000的残影在光芒中扭曲、分解、消失。",
+          "action": "数据链全部崩断。",
+          "dialogue": {
+            "speaker": "SY-0000",
+            "content": "（无声的惨叫）",
+            "emotion": "惊恐",
+            "note": "只有口型，无实际声音"
+          },
+          "camera_movement": "快速拉远",
+          "audio": {
+            "bgm": "无",
+            "sfx": [
+              "巨大的能量爆炸声",
+              "数据崩解声",
+              "白光充斥的噪音"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 6,
+      "location": "黑暗虚无空间",
+      "time": "无",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨"
+      ],
+      "mood": "悬念、未知",
+      "shots": [
+        {
+          "shot_num": 24,
+          "type": "中景",
+          "duration": "4 秒",
+          "visual": "楚烨向后缓缓倒地。他胸口的玫瑰烙印光芒熄灭。",
+          "action": "楚烨闭上眼睛。",
+          "dialogue": null,
+          "camera_movement": "慢镜头跟随倒地",
+          "audio": {
+            "bgm": "逐渐平息的电子嗡鸣",
+            "sfx": [
+              "身体倒地的闷响",
+              "嗡鸣渐弱"
+            ]
+          }
+        },
+        {
+          "shot_num": 25,
+          "type": "特写",
+          "duration": "5 秒",
+          "visual": "悬浮屏幕重新亮起，微弱光芒。显示：“系统重置中……原点密钥已变更……”。下方闪烁一个坐标（废弃信号塔）。",
+          "action": "坐标持续闪烁。",
+          "dialogue": {
+            "speaker": "系统音",
+            "content": "系统重置中……原点密钥已变更……",
+            "emotion": "平稳、重置中",
+            "note": "新的、无感情的机械音"
+          },
+          "camera_movement": "缓慢推近坐标",
+          "audio": {
+            "bgm": "悬念、低沉的电子脉冲声",
+            "sfx": [
+              "系统低鸣声",
+              "坐标闪烁的滴答声"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "adaptation_notes": "严格遵循大纲的6个story beats生成对应场景。保留了所有key_items：第二支稳定剂、倒悬玫瑰烙印、废弃信号塔坐标。将复杂的心理描写和长篇解释转化为视觉动作（如震惊的眼神、撕衣服、注射）和短促有力的台词。通过镜头运动和音效"
+}

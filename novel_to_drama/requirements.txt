@@ -1,0 +1,7 @@
+# Novel to Drama - 网文转短剧脚本生成器
+
+依赖安装：
+pip install pyyaml pandas requests
+
+配置：
+编辑 config/settings.yaml，填入你的 API 配置

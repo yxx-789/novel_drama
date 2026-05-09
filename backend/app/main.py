@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.infra.redis import close_redis
-from app.routers import assets, auth, chapters, drama, generate, health, projects, tasks
+from app.routers import assets, auth, chapters, chat, drama, generate, health, projects, tasks
 
 
 @asynccontextmanager
@@ -36,3 +36,4 @@ app.include_router(tasks.router, prefix="/api", tags=["tasks"])
 app.include_router(generate.router, prefix="/api", tags=["generate"])
 app.include_router(assets.router, prefix="/api", tags=["assets"])
 app.include_router(drama.router, prefix="/api", tags=["drama"])
+app.include_router(chat.router, prefix="/api", tags=["chat"])

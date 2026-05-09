@@ -150,3 +150,36 @@ Phase 1: 最小业务闭环 —— 项目 API（已完成）
 - [x] 导出选择 + 批量导出（章节/剧集均支持复选框多选 + 批量导出 MD/JSON）
 - [x] 脚本生成章节选择（生成脚本前弹出章节选择器，支持自定义来源章节）
 - [x] 续集记忆机制（自动生成前集上下文摘要注入 prompt，保证角色/道具/剧情一致性）
+- [x] 短剧改编 Tab 重构：模块化 EpisodeCard + ScriptViewer + 章节映射管理 + 大纲内联编辑
+- [x] 后端新增 PUT outline/script/source-chapters 接口
+- [x] 前端编译通过
+
+### Bug 修复与体验优化（系统修缮）
+
+- [x] 修复短剧改编状态同步：plan_task 设置 `"outlined"`，episode/batch_task 设置 `"script_ready"`
+- [x] 修复章节选择器默认范围解析：新增 `parseSourceChapters()` 支持 `"第1-3章"` / `"第1章"` / `"1,2,3"` 格式
+- [x] 全局主题改为暖色浅色背景（`#faf8f5` → `#f0ebe4` → `#e8e2d9`）
+- [x] 玻璃面板精细化：圆角 2rem → 1rem，阴影调整，透明度 0.7 → 0.65
+- [x] 字体层次规范化：`text-[10px]` → `text-xs`，移除中文不适用的 `tracking-widest`
+- [x] 状态色板统一：slate / indigo / amber / emerald 四色体系
+- [x] 工作流进度条：Tab 上方四步指示器（架构→目录→章节→短剧改编），可点击跳转
+- [x] 短剧 Tab 空状态引导卡片：图标 + 两步流程图解 + CTA
+- [x] 禁用按钮持续提示："AI 批量生成全部脚本"禁用时显示 `"请先生成改编计划"`
+- [x] Tab 导航增强：激活态底色高亮 + 悬停反馈
+- [x] 前端编译通过，服务重启正常
+
+### AI 问答功能
+
+- [x] 后端：新增 `chat_sessions` + `chat_messages` 模型
+- [x] 后端：Alembic migration `d512a3fe455d` 自动生成并成功应用
+- [x] 后端：新增 `backend/app/schemas/chat.py`
+- [x] 后端：新增 `backend/app/services/chat_service.py`（CRUD + LLM 调用 + 项目上下文注入）
+- [x] 后端：扩展 `llm_adapter.py` 新增 `invoke_messages()` 支持多轮对话
+- [x] 后端：新增 `backend/app/routers/chat.py`（5 个 REST 接口）
+- [x] 后端：`main.py` 挂载 chat 路由
+- [x] 前端：新增 `frontend/src/api/chat.ts`
+- [x] 前端：新增 `frontend/src/components/AIChatDrawer.tsx`（右侧抽屉、消息列表、快捷问题、会话管理）
+- [x] 前端：`ProjectDetail.tsx` 集成 AI 助手入口按钮 + 抽屉组件
+- [x] 前端 TypeScript 编译通过
+- [x] 后端服务启动正常
+- [x] docs/API_SPEC.md / DATA_MODEL.md / CHANGELOG.md 同步更新

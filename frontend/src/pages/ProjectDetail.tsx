@@ -16,8 +16,16 @@ import {
   generateBatchChapters,
   generateDramaBatch,
 } from '../api/generate'
-import { listDramaEpisodes, exportEpisodeScript, exportEpisodesBatch } from '../api/drama'
+import {
+  listDramaEpisodes,
+  exportEpisodeScript,
+  exportEpisodesBatch,
+  updateEpisodeOutline,
+  updateSourceChapters,
+} from '../api/drama'
 import type { DramaEpisode } from '../api/drama'
+import EpisodeCard from '../components/EpisodeCard'
+import AIChatDrawer from '../components/AIChatDrawer'
 
 type TabKey = 'overview' | 'architecture' | 'directory' | 'chapters' | 'drama'
 
@@ -29,6 +37,7 @@ function ProjectDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
+  const [chatOpen, setChatOpen] = useState(false)
 
   // Overview edit state
   const [editing, setEditing] = useState(false)
@@ -72,7 +81,6 @@ function ProjectDetail() {
   const [dramaPlanGenerating, setDramaPlanGenerating] = useState(false)
   const [batchDramaGenerating, setBatchDramaGenerating] = useState(false)
   const [generatingDramaEpisodeNum, setGeneratingDramaEpisodeNum] = useState<number | null>(null)
-  const [expandedDramaEpisodeId, setExpandedDramaEpisodeId] = useState<string | null>(null)
 
   // Export selection state
   const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(new Set())
@@ -510,6 +518,28 @@ function ProjectDetail() {
     }
   }
 
+  const parseSourceChapters = (sourceChapters: string | null): number[] => {
+    if (!sourceChapters) return []
+    // 支持 "第1-3章" 或 "第1章" 格式
+    const rangeMatch = sourceChapters.match(/第(\d+)-(\d+)章/)
+    if (rangeMatch) {
+      const start = parseInt(rangeMatch[1], 10)
+      const end = parseInt(rangeMatch[2], 10)
+      const nums: number[] = []
+      for (let i = start; i <= end; i++) nums.push(i)
+      return nums
+    }
+    const singleMatch = sourceChapters.match(/第(\d+)章/)
+    if (singleMatch) {
+      return [parseInt(singleMatch[1], 10)]
+    }
+    // fallback: 尝试逗号分隔
+    return sourceChapters
+      .split(',')
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => !isNaN(n))
+  }
+
   const openChapterSelector = (episodeNum: number, defaults: number[]) => {
     setChapterSelectorTarget({ episodeNum, defaults })
     setChapterSelectorSelected(new Set(defaults))
@@ -572,6 +602,24 @@ function ProjectDetail() {
       downloadBlob(blob, `episode_${episodeId.slice(0, 8)}.${ext}`)
     } catch (err: any) {
       setError(err.response?.data?.detail || '导出失败')
+    }
+  }
+
+  const handleUpdateSourceChapters = async (episodeId: string, sourceChapters: string) => {
+    try {
+      const updated = await updateSourceChapters(episodeId, sourceChapters)
+      setDramaEpisodes((prev) => prev.map((ep) => (ep.id === episodeId ? updated : ep)))
+    } catch (err: any) {
+      setError(err.response?.data?.detail || '更新来源章节失败')
+    }
+  }
+
+  const handleUpdateOutline = async (episodeId: string, outlineJson: Record<string, any>) => {
+    try {
+      const updated = await updateEpisodeOutline(episodeId, outlineJson)
+      setDramaEpisodes((prev) => prev.map((ep) => (ep.id === episodeId ? updated : ep)))
+    } catch (err: any) {
+      setError(err.response?.data?.detail || '更新大纲失败')
     }
   }
 
@@ -742,10 +790,10 @@ function ProjectDetail() {
 
   const statusBadge = (status: string) => {
     const map: Record<string, string> = {
-      draft: 'bg-gray-100 text-gray-600',
-      draft_generated: 'bg-blue-100 text-blue-700',
-      generating: 'bg-yellow-100 text-yellow-700',
-      finalized: 'bg-green-100 text-green-700',
+      draft: 'bg-slate-100 text-slate-600',
+      draft_generated: 'bg-indigo-100 text-indigo-700',
+      generating: 'bg-amber-100 text-amber-700',
+      finalized: 'bg-emerald-100 text-emerald-700',
     }
     const label: Record<string, string> = {
       draft: '草稿',
@@ -797,12 +845,64 @@ function ProjectDetail() {
             </button>
             <h1 className="text-xl font-serif font-medium text-slate-800 tracking-wide">{project.name}</h1>
           </div>
+          <button
+            onClick={() => setChatOpen(true)}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100 transition-colors"
+          >
+            <span>🤖</span>
+            <span>AI 助手</span>
+          </button>
         </div>
       </header>
 
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+      {/* Workflow Progress */}
+      <div className="bg-white/60 border-b border-slate-100">
+        <div className="max-w-6xl mx-auto px-6 md:px-10 py-4">
+          <div className="flex items-center space-x-2">
+            {[
+              { key: 'architecture', label: '架构', done: !!architectureText },
+              { key: 'directory', label: '目录', done: !!directoryText },
+              { key: 'chapters', label: '章节', done: chapters.some((c) => c.status === 'draft_generated' || c.status === 'finalized') },
+              { key: 'drama', label: '短剧改编', done: dramaEpisodes.some((ep) => ep.status === 'script_ready') },
+            ].map((step, idx, arr) => (
+              <div key={step.key} className="flex items-center space-x-2">
+                <button
+                  onClick={() => {
+                    setActiveTab(step.key as TabKey)
+                    setError('')
+                  }}
+                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    activeTab === step.key
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : step.done
+                        ? 'text-emerald-600 hover:bg-emerald-50'
+                        : 'text-slate-400 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
+                    step.done
+                      ? 'bg-emerald-100 text-emerald-600'
+                      : activeTab === step.key
+                        ? 'bg-indigo-100 text-indigo-600'
+                        : 'bg-slate-100 text-slate-400'
+                  }`}>
+                    {step.done ? '✓' : idx + 1}
+                  </span>
+                  <span>{step.label}</span>
+                </button>
+                {idx < arr.length - 1 && (
+                  <span className={`w-6 h-px ${step.done ? 'bg-emerald-200' : 'bg-slate-200'}`} />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="bg-white border-b border-slate-100">
+        <div className="max-w-6xl mx-auto px-6 md:px-10">
+          <nav className="-mb-px flex space-x-1" aria-label="Tabs">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
@@ -810,10 +910,10 @@ function ProjectDetail() {
                   setActiveTab(tab.key)
                   setError('')
                 }}
-                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                className={`whitespace-nowrap py-3 px-4 rounded-t-lg border-b-2 font-medium text-sm transition-colors ${
                   activeTab === tab.key
-                    ? 'border-indigo-500 text-indigo-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'border-indigo-500 text-indigo-700 bg-indigo-50/50'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50/50'
                 }`}
               >
                 {tab.label}
@@ -825,7 +925,7 @@ function ProjectDetail() {
 
       <main className="max-w-6xl mx-auto py-8 px-6 md:px-10 space-y-6">
         {error && (
-          <div className="mb-4 p-4 bg-rose-50/80 text-rose-600 rounded-2xl text-xs text-center font-medium tracking-wide">
+          <div className="mb-4 p-4 bg-rose-50/80 text-rose-600 rounded-xl text-sm text-center font-medium">
             {error}
           </div>
         )}
@@ -1298,26 +1398,33 @@ function ProjectDetail() {
       )}
 
         {activeTab === 'drama' && (
-          <div className="glass-panel p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-base font-serif font-medium text-slate-800">短剧改编</h2>
-              <div className="flex items-center space-x-3">
-                {dramaEpisodes.length > 0 && (
+          <div className="space-y-4">
+            <div className="glass-panel p-5">
+              <div className="flex justify-between items-center">
+                <h2 className="text-base font-medium text-slate-800">短剧改编</h2>
+                <div className="flex items-center space-x-3">
+                  {dramaEpisodes.length > 0 && (
+                    <div className="flex flex-col items-end">
+                      <button
+                        onClick={handleGenerateDramaBatch}
+                        disabled={batchDramaGenerating || !dramaEpisodes.some((ep) => ep.outline_json)}
+                        className="btn-primary bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 disabled:hover:translate-y-0"
+                      >
+                        {batchDramaGenerating ? '批量生成中...' : 'AI 批量生成全部脚本'}
+                      </button>
+                      {!dramaEpisodes.some((ep) => ep.outline_json) && (
+                        <span className="text-[11px] text-slate-400 mt-1">请先生成改编计划</span>
+                      )}
+                    </div>
+                  )}
                   <button
-                    onClick={handleGenerateDramaBatch}
-                    disabled={batchDramaGenerating}
-                    className="btn-primary bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 disabled:hover:translate-y-0"
+                    onClick={handleGenerateDramaPlan}
+                    disabled={dramaPlanGenerating}
+                    className="btn-primary disabled:opacity-50 disabled:hover:translate-y-0"
                   >
-                    {batchDramaGenerating ? '批量生成中...' : 'AI 批量生成全部脚本'}
+                    {dramaPlanGenerating ? '生成中...' : 'AI 生成改编计划'}
                   </button>
-                )}
-                <button
-                  onClick={handleGenerateDramaPlan}
-                  disabled={dramaPlanGenerating}
-                  className="btn-primary disabled:opacity-50 disabled:hover:translate-y-0"
-                >
-                  {dramaPlanGenerating ? '生成中...' : 'AI 生成改编计划'}
-                </button>
+                </div>
               </div>
             </div>
             {activeTask?.type === 'drama_plan' && (
@@ -1340,175 +1447,145 @@ function ProjectDetail() {
             )}
 
             {dramaLoading ? (
-              <p className="text-slate-400 text-xs">加载中...</p>
+              <p className="text-slate-400 text-sm py-8 text-center">加载中...</p>
             ) : dramaEpisodes.length === 0 ? (
-              <p className="text-slate-400 text-xs">暂无短剧集，点击上方按钮生成改编计划</p>
+              <div className="glass-panel p-8 text-center"
+              >
+                <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-indigo-50 flex items-center justify-center"
+                >
+                  <span className="text-xl"
+                  >🎬</span>
+                </div>
+                <h3 className="text-sm font-medium text-slate-700 mb-2"
+                >还没有短剧改编计划
+                </h3>
+                <p className="text-sm text-slate-400 mb-5 max-w-sm mx-auto"
+                >
+                  短剧改编需要两步：先由 AI 分析小说章节并创建分集大纲，再为每集生成分镜头脚本
+                </p>
+                <div className="flex items-center justify-center space-x-6 text-xs text-slate-400 mb-5"
+                >
+                  <div className="flex flex-col items-center space-y-1"
+                  >
+                    <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-medium"
+                    >1</span>
+                    <span>生成改编计划</span>
+                  </div>
+                  <span className="text-slate-300"
+                  >→</span>
+                  <div className="flex flex-col items-center space-y-1"
+                  >
+                    <span className="w-6 h-6 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center font-medium"
+                    >2</span>
+                    <span>生成各集脚本</span>
+                  </div>
+                </div>
+                <button
+                  onClick={handleGenerateDramaPlan}
+                  disabled={dramaPlanGenerating}
+                  className="btn-primary disabled:opacity-50"
+                >
+                  {dramaPlanGenerating ? '生成中...' : '开始第一步：生成改编计划'}
+                </button>
+              </div>
             ) : (
               <>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-3">
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={dramaEpisodes.length > 0 && selectedEpisodeIds.size === dramaEpisodes.length}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedEpisodeIds(new Set(dramaEpisodes.map((ep) => ep.id)))
-                        } else {
-                          setSelectedEpisodeIds(new Set())
-                        }
-                      }}
-                      className="rounded border-slate-300 text-slate-600 focus:ring-slate-200"
-                    />
-                    <span className="text-xs text-slate-500">全选</span>
-                  </label>
-                  {selectedEpisodeIds.size > 0 && (
-                    <>
-                      <button
-                        onClick={async () => {
-                          try {
-                            const blob = await exportEpisodesBatch(Array.from(selectedEpisodeIds), 'md')
-                            const url = window.URL.createObjectURL(blob)
-                            const a = document.createElement('a')
-                            a.href = url
-                            a.download = 'episodes_batch.md'
-                            document.body.appendChild(a)
-                            a.click()
-                            a.remove()
-                            window.URL.revokeObjectURL(url)
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-3">
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={dramaEpisodes.length > 0 && selectedEpisodeIds.size === dramaEpisodes.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedEpisodeIds(new Set(dramaEpisodes.map((ep) => ep.id)))
+                          } else {
                             setSelectedEpisodeIds(new Set())
-                          } catch (err: any) {
-                            setError(err.response?.data?.detail || '导出失败')
                           }
                         }}
-                        className="btn-secondary text-[10px] py-1.5 px-3"
-                      >
-                        导出选中 MD ({selectedEpisodeIds.size})
-                      </button>
-                      <button
-                        onClick={async () => {
-                          try {
-                            const blob = await exportEpisodesBatch(Array.from(selectedEpisodeIds), 'json')
-                            const url = window.URL.createObjectURL(blob)
-                            const a = document.createElement('a')
-                            a.href = url
-                            a.download = 'episodes_batch.json'
-                            document.body.appendChild(a)
-                            a.click()
-                            a.remove()
-                            window.URL.revokeObjectURL(url)
-                            setSelectedEpisodeIds(new Set())
-                          } catch (err: any) {
-                            setError(err.response?.data?.detail || '导出失败')
-                          }
-                        }}
-                        className="btn-secondary text-[10px] py-1.5 px-3"
-                      >
-                        JSON
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="space-y-3">
-                {dramaEpisodes.map((episode) => (
-                  <div
-                    key={episode.id}
-                    className="glass-panel p-4 card-hover"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-start space-x-3 flex-1">
-                        <input
-                          type="checkbox"
-                          checked={selectedEpisodeIds.has(episode.id)}
-                          onChange={(e) => {
-                            const next = new Set(selectedEpisodeIds)
-                            if (e.target.checked) {
-                              next.add(episode.id)
-                            } else {
-                              next.delete(episode.id)
-                            }
-                            setSelectedEpisodeIds(next)
-                          }}
-                          className="mt-1 rounded border-slate-300 text-slate-600 focus:ring-slate-200"
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-3">
-                            <span className="text-sm font-medium text-gray-500">
-                              第{episode.episode_num}集
-                            </span>
-                            <h3 className="text-base font-semibold text-gray-900">
-                              {episode.title}
-                            </h3>
-                            {statusBadge(episode.status)}
-                          </div>
-                          {episode.source_chapters && (
-                            <p className="mt-2 text-xs text-slate-400">
-                              来源：{episode.source_chapters}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2 ml-4">
+                        className="rounded border-slate-300 text-slate-600 focus:ring-slate-200"
+                      />
+                      <span className="text-xs text-slate-500">全选</span>
+                    </label>
+                    {selectedEpisodeIds.size > 0 && (
+                      <>
                         <button
-                          onClick={() => openChapterSelector(episode.episode_num, episode.source_chapters ? episode.source_chapters.split(',').map((s: string) => parseInt(s.trim())).filter((n: number) => !isNaN(n)) : [])}
-                          disabled={generatingDramaEpisodeNum === episode.episode_num}
-                          className="text-[10px] font-bold tracking-widest text-emerald-600 hover:text-emerald-700 disabled:opacity-50 transition-colors uppercase"
-                        >
-                          {generatingDramaEpisodeNum === episode.episode_num ? '生成中...' : '生成脚本'}
-                        </button>
-                        {(episode.outline_json || episode.script_json) && (
-                          <button
-                            onClick={() =>
-                              setExpandedDramaEpisodeId(
-                                expandedDramaEpisodeId === episode.id ? null : episode.id
-                              )
+                          onClick={async () => {
+                            try {
+                              const blob = await exportEpisodesBatch(Array.from(selectedEpisodeIds), 'md')
+                              const url = window.URL.createObjectURL(blob)
+                              const a = document.createElement('a')
+                              a.href = url
+                              a.download = 'episodes_batch.md'
+                              document.body.appendChild(a)
+                              a.click()
+                              a.remove()
+                              window.URL.revokeObjectURL(url)
+                              setSelectedEpisodeIds(new Set())
+                            } catch (err: any) {
+                              setError(err.response?.data?.detail || '导出失败')
                             }
-                            className="text-[10px] font-bold tracking-widest text-slate-400 hover:text-slate-700 transition-colors uppercase"
-                          >
-                            {expandedDramaEpisodeId === episode.id ? '收起脚本' : '查看脚本'}
-                          </button>
-                        )}
-                        {episode.script_json && (
-                          <div className="flex items-center space-x-1 ml-1">
-                            <span className="text-[10px] text-slate-300 tracking-wider uppercase">导出</span>
-                            {(['json', 'md', 'csv'] as const).map((fmt) => (
-                              <button
-                                key={fmt}
-                                onClick={() => handleExportEpisode(episode.id, fmt)}
-                                className="text-[10px] font-bold tracking-widest text-slate-400 hover:text-slate-600 transition-colors uppercase"
-                                title={`导出 ${fmt.toUpperCase()}`}
-                              >
-                                {fmt.toUpperCase()}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {expandedDramaEpisodeId === episode.id && (
-                      <div className="mt-3 space-y-3 border-t border-gray-100 pt-3">
-                        {episode.outline_json && (
-                          <div>
-                            <h4 className="text-sm font-semibold text-gray-700 mb-1">分集大纲</h4>
-                            <pre className="bg-slate-50/60 rounded-xl p-4 text-[10px] text-slate-600 overflow-x-auto whitespace-pre-wrap border border-white/60">
-                              {JSON.stringify(episode.outline_json, null, 2)}
-                            </pre>
-                          </div>
-                        )}
-                        {episode.script_json && (
-                          <div>
-                            <h4 className="text-sm font-semibold text-gray-700 mb-1">脚本详情</h4>
-                            <pre className="bg-slate-50/60 rounded-xl p-4 text-[10px] text-slate-600 overflow-x-auto whitespace-pre-wrap border border-white/60">
-                              {JSON.stringify(episode.script_json, null, 2)}
-                            </pre>
-                          </div>
-                        )}
-                      </div>
+                          }}
+                          className="btn-secondary text-[10px] py-1.5 px-3"
+                        >
+                          导出选中 MD ({selectedEpisodeIds.size})
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const blob = await exportEpisodesBatch(Array.from(selectedEpisodeIds), 'json')
+                              const url = window.URL.createObjectURL(blob)
+                              const a = document.createElement('a')
+                              a.href = url
+                              a.download = 'episodes_batch.json'
+                              document.body.appendChild(a)
+                              a.click()
+                              a.remove()
+                              window.URL.revokeObjectURL(url)
+                              setSelectedEpisodeIds(new Set())
+                            } catch (err: any) {
+                              setError(err.response?.data?.detail || '导出失败')
+                            }
+                          }}
+                          className="btn-secondary text-[10px] py-1.5 px-3"
+                        >
+                          JSON
+                        </button>
+                      </>
                     )}
                   </div>
-                ))}
-              </div></>
+                </div>
+                <div className="space-y-4">
+                  {dramaEpisodes.map((episode, idx) => (
+                    <EpisodeCard
+                      key={episode.id}
+                      episode={episode}
+                      chapters={chapters.map((c) => ({ id: c.id, chapter_num: c.chapter_num, title: c.title }))}
+                      prevEpisode={idx > 0 ? dramaEpisodes[idx - 1] : null}
+                      isGenerating={generatingDramaEpisodeNum === episode.episode_num}
+                      isSelected={selectedEpisodeIds.has(episode.id)}
+                      onToggleSelect={() => {
+                        const next = new Set(selectedEpisodeIds)
+                        if (next.has(episode.id)) {
+                          next.delete(episode.id)
+                        } else {
+                          next.add(episode.id)
+                        }
+                        setSelectedEpisodeIds(next)
+                      }}
+                      onGenerateScript={() =>
+                        openChapterSelector(
+                          episode.episode_num,
+                          parseSourceChapters(episode.source_chapters)
+                        )
+                      }
+                      onExport={(fmt: 'json' | 'md' | 'csv') => handleExportEpisode(episode.id, fmt)}
+                      onUpdateSourceChapters={(sourceChapters: string) => handleUpdateSourceChapters(episode.id, sourceChapters)}
+                      onUpdateOutline={(outline: Record<string, any>) => handleUpdateOutline(episode.id, outline)}
+                    />
+                  ))}
+                </div>
+              </>
             )}
           </div>
         )}
@@ -1602,6 +1679,12 @@ function ProjectDetail() {
         </div>
       )}
       </main>
+
+      <AIChatDrawer
+        projectId={project.id}
+        isOpen={chatOpen}
+        onClose={() => setChatOpen(false)}
+      />
     </div>
   )
 }

@@ -9,7 +9,13 @@ from app.infra.database import get_db
 from app.models.project import DramaEpisode
 from app.models.user import User
 from app.routers.dependency import get_current_user
-from app.schemas.drama import DramaEpisodeOut, ExportFormat
+from app.schemas.drama import (
+    DramaEpisodeOut,
+    ExportFormat,
+    UpdateOutlineReq,
+    UpdateScriptReq,
+    UpdateSourceChaptersReq,
+)
 from app.services.drama.exporter import export_script
 from app.services.project_service import get_project_by_id
 
@@ -118,4 +124,69 @@ async def export_drama_episodes_batch(
         media_type=media_type_map.get(format.value, "text/plain"),
         headers={"Content-Disposition": f'attachment; filename="episodes_batch.{ext}"'},
     )
+
+
+async def _get_episode_with_auth(
+    db: AsyncSession,
+    episode_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> DramaEpisode:
+    result = await db.execute(
+        select(DramaEpisode).where(DramaEpisode.id == episode_id)
+    )
+    episode = result.scalar_one_or_none()
+    if not episode:
+        raise HTTPException(status_code=404, detail="剧集不存在")
+    project = await get_project_by_id(db, uuid.UUID(episode.project_id), user_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在或无权限访问")
+    return episode
+
+
+@router.put("/drama/episodes/{episode_id}/outline", response_model=DramaEpisodeOut)
+async def update_episode_outline(
+    episode_id: uuid.UUID,
+    req: UpdateOutlineReq,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """更新剧集大纲"""
+    episode = await _get_episode_with_auth(db, episode_id, current_user.id)
+    episode.outline_json = req.outline_json
+    if episode.status == "planned":
+        episode.status = "outlined"
+    await db.commit()
+    await db.refresh(episode)
+    return episode
+
+
+@router.put("/drama/episodes/{episode_id}/script", response_model=DramaEpisodeOut)
+async def update_episode_script(
+    episode_id: uuid.UUID,
+    req: UpdateScriptReq,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """更新剧集脚本"""
+    episode = await _get_episode_with_auth(db, episode_id, current_user.id)
+    episode.script_json = req.script_json
+    episode.status = "script_ready"
+    await db.commit()
+    await db.refresh(episode)
+    return episode
+
+
+@router.put("/drama/episodes/{episode_id}/source-chapters", response_model=DramaEpisodeOut)
+async def update_episode_source_chapters(
+    episode_id: uuid.UUID,
+    req: UpdateSourceChaptersReq,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """更新剧集来源章节映射"""
+    episode = await _get_episode_with_auth(db, episode_id, current_user.id)
+    episode.source_chapters = req.source_chapters
+    await db.commit()
+    await db.refresh(episode)
+    return episode
 

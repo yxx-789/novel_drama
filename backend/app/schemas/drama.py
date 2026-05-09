@@ -24,3 +24,15 @@ class DramaEpisodeOut(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+
+
+class UpdateOutlineReq(BaseModel):
+    outline_json: dict
+
+
+class UpdateScriptReq(BaseModel):
+    script_json: dict
+
+
+class UpdateSourceChaptersReq(BaseModel):
+    source_chapters: str

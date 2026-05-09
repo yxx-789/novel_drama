@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.models.base import Base
 
 # 导入所有模型以确保 Base.metadata 包含所有表
-from app.models import user, project  # noqa
+from app.models import chat, project, user  # noqa
 
 config = context.config
 

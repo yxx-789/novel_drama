@@ -299,7 +299,59 @@ Authorization: Bearer <token>
 | GET | /drama/episodes/{ep_id}/script | 分镜脚本 | 待实现 |
 | GET | /drama/episodes/{ep_id}/export?format=json\|md\|csv | 导出单集脚本 | 已实现 |
 | POST | /drama/episodes/export/batch | 批量导出选中剧集脚本 | 已实现 |
+| PUT | /drama/episodes/{ep_id}/outline | 更新剧集大纲 | 已实现 |
+| PUT | /drama/episodes/{ep_id}/script | 更新剧集脚本 | 已实现 |
+| PUT | /drama/episodes/{ep_id}/source-chapters | 更新来源章节映射 | 已实现 |
 | POST | /api/chapters/export/batch | 批量导出选中章节 | 已实现 |
+
+### AI 问答
+
+| 方法 | 路径 | 说明 | 状态 |
+|------|------|------|------|
+| GET | /projects/{id}/chat-sessions | 获取项目的会话列表 | 已实现 |
+| GET | /chat-sessions | 获取当前用户的全部会话列表 | 已实现 |
+| POST | /chat-sessions | 创建新会话 | 已实现 |
+| GET | /chat-sessions/{session_id} | 获取会话详情（含消息） | 已实现 |
+| POST | /chat-sessions/{session_id}/messages | 发送消息，返回 AI 回复 | 已实现 |
+
+**请求/响应示例**
+
+创建会话：
+```http
+POST /api/chat-sessions
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "project_id": "...",
+  "title": "角色讨论"
+}
+```
+
+发送消息：
+```http
+POST /api/chat-sessions/{session_id}/messages
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "content": "帮我完善这个角色设定"
+}
+```
+
+响应（AI 回复）：
+```json
+{
+  "id": "...",
+  "session_id": "...",
+  "role": "assistant",
+  "content": "好的，让我们从角色的核心动机开始...",
+  "model_name": "gpt-4o-mini",
+  "tokens_used": 256,
+  "created_at": "2026-05-09T12:00:00Z",
+  "updated_at": "2026-05-09T12:00:00Z"
+}
+```
 
 ### 任务
 

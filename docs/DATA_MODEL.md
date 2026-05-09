@@ -231,6 +231,43 @@
 
 ---
 
+### chat_sessions
+
+AI 问答会话。
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | UUID | PK | |
+| project_id | UUID | FK → projects.id, nullable | 关联项目（可为空，表示通用问答） |
+| user_id | UUID | FK → users.id, NOT NULL | 会话所有者 |
+| title | VARCHAR(255) | nullable | 会话标题（自动生成） |
+| created_at | TIMESTAMP | DEFAULT now() | |
+| updated_at | TIMESTAMP | DEFAULT now() | |
+
+**索引**：project_id, user_id
+
+---
+
+### chat_messages
+
+AI 问答消息。
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | UUID | PK | |
+| session_id | UUID | FK → chat_sessions.id, NOT NULL | |
+| role | VARCHAR(20) | NOT NULL | user / assistant / system |
+| content | TEXT | NOT NULL | 消息内容 |
+| model_name | VARCHAR(100) | nullable | 使用的模型名称 |
+| tokens_used | INTEGER | nullable | 消耗的 token 数 |
+| meta_json | JSONB | nullable | 扩展字段 |
+| created_at | TIMESTAMP | DEFAULT now() | |
+| updated_at | TIMESTAMP | DEFAULT now() | |
+
+**索引**：session_id
+
+---
+
 ### api_configs
 
 用户 LLM API 配置。

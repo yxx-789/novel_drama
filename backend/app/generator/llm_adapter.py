@@ -34,13 +34,16 @@ class OpenAICompatibleAdapter(AsyncLLMAdapter):
         self.timeout = timeout
 
     async def invoke(self, prompt: str) -> str:
+        return await self.invoke_messages([{"role": "user", "content": prompt}])
+
+    async def invoke_messages(self, messages: list[dict]) -> str:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
         payload = {
             "model": self.model_name,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
         }

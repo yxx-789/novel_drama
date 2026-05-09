@@ -548,6 +548,7 @@ async def run_drama_plan_task(task_id: uuid.UUID) -> None:
                     episode.outline_json = ep["outline_json"]
                     episode.title = ep["title"]
                     episode.source_chapters = ep["source_chapters"]
+                    episode.status = "outlined"
             await db.commit()
 
             await update_task_status(
@@ -667,7 +668,7 @@ async def run_drama_episode_task(task_id: uuid.UUID) -> None:
             await update_task_status(db, task_id, "running", progress=80)
 
             episode.script_json = script
-            episode.status = "generated"
+            episode.status = "script_ready"
             await db.commit()
 
             await update_task_status(
@@ -777,7 +778,7 @@ async def run_drama_batch_task(task_id: uuid.UUID) -> None:
                 )
 
                 episode.script_json = script
-                episode.status = "generated"
+                episode.status = "script_ready"
                 await db.commit()
 
                 generated_count += 1

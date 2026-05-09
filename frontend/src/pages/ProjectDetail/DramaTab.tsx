@@ -19,6 +19,7 @@ interface DramaTabProps {
   onUpdateSourceChapters: (id: string, sourceChapters: string) => void
   onUpdateOutline: (id: string, outline: Record<string, any>) => void
   onOpenChapterSelector: (episodeNum: number, defaults: number[]) => void
+  onExportEpisodesBatch: (ids: string[], format: 'md' | 'json') => Promise<Blob>
 }
 
 export default function DramaTab({
@@ -37,6 +38,7 @@ export default function DramaTab({
   onUpdateSourceChapters,
   onUpdateOutline,
   onOpenChapterSelector,
+  onExportEpisodesBatch,
 }: DramaTabProps) {
   const parseSourceChapters = (sourceChapters: string | null): number[] => {
     if (!sourceChapters) return []
@@ -161,8 +163,7 @@ export default function DramaTab({
                   <button
                     onClick={async () => {
                       try {
-                        const { exportEpisodesBatch } = await import('../../api/drama')
-                        const blob = await exportEpisodesBatch(Array.from(selectedEpisodeIds), 'md')
+                        const blob = await onExportEpisodesBatch(Array.from(selectedEpisodeIds), 'md')
                         const url = window.URL.createObjectURL(blob)
                         const a = document.createElement('a')
                         a.href = url
@@ -183,8 +184,7 @@ export default function DramaTab({
                   <button
                     onClick={async () => {
                       try {
-                        const { exportEpisodesBatch } = await import('../../api/drama')
-                        const blob = await exportEpisodesBatch(Array.from(selectedEpisodeIds), 'json')
+                        const blob = await onExportEpisodesBatch(Array.from(selectedEpisodeIds), 'json')
                         const url = window.URL.createObjectURL(blob)
                         const a = document.createElement('a')
                         a.href = url

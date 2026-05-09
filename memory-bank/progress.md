@@ -183,3 +183,17 @@ Phase 1: 最小业务闭环 —— 项目 API（已完成）
 - [x] 前端 TypeScript 编译通过
 - [x] 后端服务启动正常
 - [x] docs/API_SPEC.md / DATA_MODEL.md / CHANGELOG.md 同步更新
+
+### P0 核心体验优化
+
+- [x] Auth 路由守卫 + 全局 Toast：未登录用户重定向 /login，API 错误统一 Toast 提示
+- [x] 未保存修改警告：编辑中切换 Tab 或刷新页面时 confirm 确认
+- [x] ProjectDetail.tsx 拆分：1777 行 god component → 5 个 Tab 子组件 + utils + 主壳
+  - [x] `OverviewTab.tsx` — 项目信息编辑/展示
+  - [x] `ArchitectureTab.tsx` — 架构编辑 + AI 生成
+  - [x] `DirectoryTab.tsx` — 目录编辑 + AI 生成
+  - [x] `ChaptersTab.tsx` — 章节列表 + CRUD + 搜索 + 批量导出
+  - [x] `DramaTab.tsx` — 短剧改编 + 剧集管理 + 批量导出
+  - [x] `utils.tsx` — 共享工具（pollTask, ProgressBar, statusBadge 等）
+  - [x] `index.tsx` — 主壳：状态管理 + Header + Tab 切换 + 模态框
+- [x] 前端编译通过，构建成功

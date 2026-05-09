@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { login, register } from '../api/auth'
+import { login, register, getCurrentUser } from '../api/auth'
 import { useAuthStore } from '../store/auth'
 
 function Login() {
@@ -28,10 +28,8 @@ function Login() {
         setToken(tokenRes.access_token)
       }
 
-      const { data } = await import('../api/auth').then((m) =>
-        m.getCurrentUser().then((u) => ({ data: u })),
-      )
-      setUser(data)
+      const userData = await getCurrentUser()
+      setUser(userData)
       navigate('/projects')
     } catch (err: any) {
       const msg = err.response?.data?.detail || '操作失败，请重试'

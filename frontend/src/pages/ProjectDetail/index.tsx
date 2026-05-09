@@ -18,6 +18,7 @@ import {
 import {
   listDramaEpisodes,
   exportEpisodeScript,
+  exportEpisodesBatch,
   updateEpisodeOutline,
   updateSourceChapters,
 } from '../../api/drama'
@@ -926,6 +927,7 @@ function ProjectDetail() {
             onUpdateSourceChapters={handleUpdateSourceChapters}
             onUpdateOutline={handleUpdateOutline}
             onOpenChapterSelector={openChapterSelector}
+            onExportEpisodesBatch={exportEpisodesBatch}
           />
         )}
       </main>

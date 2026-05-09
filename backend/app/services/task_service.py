@@ -8,6 +8,7 @@ from app.infra.database import AsyncSessionLocal
 from app.models.project import Project, ProjectAsset, Task
 from app.services.drama_service import generate_drama_outline, generate_drama_script
 from app.services.generation_service import (
+    check_chapter_consistency,
     generate_architecture,
     generate_chapter_draft,
     generate_directory,
@@ -282,6 +283,23 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                 previous_chapter_summary=previous_summary,
             )
 
+            await update_task_status(db, task_id, "running", progress=65)
+
+            # 章节生成后一致性检查（非阻塞）
+            if character_state_text:
+                try:
+                    check_result = await check_chapter_consistency(
+                        chapter_text=draft_text,
+                        character_state_text=character_state_text,
+                        previous_chapter_draft=previous_draft,
+                    )
+                    if "INCONSISTENT" in check_result.upper():
+                        logger.warning(f"Chapter {chapter_num} consistency issues detected:\n{check_result}")
+                    else:
+                        logger.info(f"Chapter {chapter_num} consistency check passed.")
+                except Exception as e:
+                    logger.warning(f"Chapter consistency check failed for chapter {chapter_num}: {e}")
+
             await update_task_status(db, task_id, "running", progress=70)
 
             # 更新角色状态
@@ -436,6 +454,21 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
 
                 chapter.draft = draft_text
                 chapter.status = "draft_generated"
+
+                # 章节生成后一致性检查（非阻塞）
+                if character_state_text:
+                    try:
+                        check_result = await check_chapter_consistency(
+                            chapter_text=draft_text,
+                            character_state_text=character_state_text,
+                            previous_chapter_draft=previous_draft,
+                        )
+                        if "INCONSISTENT" in check_result.upper():
+                            logger.warning(f"Batch chapter {chapter_num} consistency issues detected:\n{check_result}")
+                        else:
+                            logger.info(f"Batch chapter {chapter_num} consistency check passed.")
+                    except Exception as e:
+                        logger.warning(f"Batch chapter consistency check failed for chapter {chapter_num}: {e}")
 
                 # 更新角色状态
                 if character_state_text:

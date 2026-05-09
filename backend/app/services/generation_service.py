@@ -60,7 +60,7 @@ async def generate_architecture(
         base_url=settings.LLM_BASE_URL,
         model_name=settings.LLM_MODEL,
         api_key=settings.LLM_API_KEY,
-        temperature=settings.LLM_TEMPERATURE,
+        temperature=0.3,
         max_tokens=settings.LLM_MAX_TOKENS,
         timeout=settings.LLM_TIMEOUT,
     )
@@ -124,9 +124,18 @@ async def generate_architecture(
     if not plot_arch_result:
         raise RuntimeError("plot_architecture_prompt generation failed")
 
-    # Step6: 架构一致性校验
+    # Step6: 架构一致性校验（使用更低 temperature，确保审查严谨）
     logger.info("Step6: Running architecture consistency check ...")
     try:
+        check_adapter = create_llm_adapter(
+            interface_format=settings.LLM_INTERFACE_FORMAT,
+            base_url=settings.LLM_BASE_URL,
+            model_name=settings.LLM_MODEL,
+            api_key=settings.LLM_API_KEY,
+            temperature=0.2,
+            max_tokens=settings.LLM_MAX_TOKENS,
+            timeout=settings.LLM_TIMEOUT,
+        )
         prompt_check = architecture_consistency_prompt.format(
             core_seed=core_seed_result,
             character_dynamics=character_dynamics_result,
@@ -134,7 +143,7 @@ async def generate_architecture(
             world_building=world_building_result,
             plot_architecture=plot_arch_result,
         )
-        check_result = await _invoke_with_retry(adapter, prompt_check)
+        check_result = await _invoke_with_retry(check_adapter, prompt_check)
         if check_result and "INCONSISTENT" in check_result.upper():
             logger.warning(f"Architecture consistency issues detected:\n{check_result}")
         else:
@@ -161,25 +170,40 @@ async def generate_architecture(
 
 
 def parse_chapter_blueprint(blueprint_text: str) -> list[dict]:
-    """复用自 AI_NovelGenerator/chapter_directory_parser.py"""
+    """复用自 AI_NovelGenerator/chapter_directory_parser.py（增强版）"""
     # 预处理：去掉 markdown 加粗标记 ** 和行首空白
     cleaned_text = re.sub(r'\*\*', '', blueprint_text)
     chunks = re.split(r'\n\s*\n', cleaned_text.strip())
     results = []
-    chapter_number_pattern = re.compile(r'^第\s*(\d+)\s*章\s*-\s*\[?(.*?)\]?$')
-    role_pattern = re.compile(r'^本章定位：\s*\[?(.*)\]?$')
-    purpose_pattern = re.compile(r'^核心作用：\s*\[?(.*)\]?$')
-    suspense_pattern = re.compile(r'^悬念密度：\s*\[?(.*)\]?$')
-    foreshadow_pattern = re.compile(r'^伏笔操作：\s*\[?(.*)\]?$')
-    twist_pattern = re.compile(r'^认知颠覆：\s*\[?(.*)\]?$')
-    summary_pattern = re.compile(r'^本章简述：\s*\[?(.*)\]?$')
 
+    # 多模式标题匹配（支持：第1章 - [标题] / 第1章：[标题] / 第1章 [标题] / 第1章-标题）
+    header_patterns = [
+        re.compile(r'^第\s*(\d+)\s*章\s*[-:]\s*\[?(.*?)\]?$'),
+        re.compile(r'^第\s*(\d+)\s*章\s+\[?(.*?)\]?$'),
+        re.compile(r'^第\s*(\d+)\s*章\s*[-:]\s*(.*?)$'),
+        re.compile(r'^Chapter\s*(\d+)\s*[-:]?\s*\[?(.*?)\]?$', re.IGNORECASE),
+    ]
+
+    role_pattern = re.compile(r'^本章定位[:：]\s*\[?(.*)\]?$')
+    purpose_pattern = re.compile(r'^核心作用[:：]\s*\[?(.*)\]?$')
+    suspense_pattern = re.compile(r'^悬念密度[:：]\s*\[?(.*)\]?$')
+    foreshadow_pattern = re.compile(r'^伏笔操作[:：]\s*\[?(.*)\]?$')
+    twist_pattern = re.compile(r'^认知颠覆[:：]\s*\[?(.*)\]?$')
+    summary_pattern = re.compile(r'^本章简述[:：]\s*\[?(.*)\]?$')
+
+    skipped_headers = []
     for chunk in chunks:
         lines = chunk.strip().splitlines()
         if not lines:
             continue
-        header_match = chapter_number_pattern.match(lines[0].strip())
+        header_stripped = lines[0].strip()
+        header_match = None
+        for pattern in header_patterns:
+            header_match = pattern.match(header_stripped)
+            if header_match:
+                break
         if not header_match:
+            skipped_headers.append(header_stripped)
             continue
         chapter_number = int(header_match.group(1))
         chapter_title = header_match.group(2).strip()
@@ -248,7 +272,7 @@ async def generate_directory(
         base_url=settings.LLM_BASE_URL,
         model_name=settings.LLM_MODEL,
         api_key=settings.LLM_API_KEY,
-        temperature=settings.LLM_TEMPERATURE,
+        temperature=0.3,
         max_tokens=settings.LLM_MAX_TOKENS,
         timeout=settings.LLM_TIMEOUT,
     )
@@ -266,6 +290,16 @@ async def generate_directory(
         raise RuntimeError("chapter_blueprint_prompt generation failed")
 
     parsed_chapters = parse_chapter_blueprint(directory_text)
+    if not parsed_chapters:
+        raise RuntimeError(
+            f"Directory parsing failed: no chapters extracted from LLM output. "
+            f"Raw output preview: {directory_text[:500]}"
+        )
+    if len(parsed_chapters) != number_of_chapters:
+        logger.warning(
+            f"Directory parsing mismatch: expected {number_of_chapters} chapters, "
+            f"got {len(parsed_chapters)}. This may indicate format issues in LLM output."
+        )
     logger.info(f"Directory generation completed: {len(parsed_chapters)} chapters parsed.")
     return directory_text, parsed_chapters
 
@@ -286,7 +320,7 @@ async def update_character_state(
         base_url=settings.LLM_BASE_URL,
         model_name=settings.LLM_MODEL,
         api_key=settings.LLM_API_KEY,
-        temperature=settings.LLM_TEMPERATURE,
+        temperature=0.3,
         max_tokens=settings.LLM_MAX_TOKENS,
         timeout=settings.LLM_TIMEOUT,
     )
@@ -323,7 +357,7 @@ async def generate_chapter_draft(
         base_url=settings.LLM_BASE_URL,
         model_name=settings.LLM_MODEL,
         api_key=settings.LLM_API_KEY,
-        temperature=settings.LLM_TEMPERATURE,
+        temperature=0.6,
         max_tokens=settings.LLM_MAX_TOKENS,
         timeout=settings.LLM_TIMEOUT,
     )
@@ -368,3 +402,40 @@ async def generate_chapter_draft(
     if not draft_text:
         raise RuntimeError("Chapter draft generation failed")
     return draft_text
+
+
+async def check_chapter_consistency(
+    chapter_text: str,
+    character_state_text: str,
+    previous_chapter_draft: str | None = None,
+) -> str:
+    """
+    审查新生成的章节是否与角色状态和前文情节一致。
+    返回：检查结果文本（包含 CHECK: CONSISTENT 或 CHECK: INCONSISTENT）
+    """
+    if not settings.LLM_API_KEY:
+        return "CHECK: CONSISTENT (LLM not configured)"
+
+    from app.generator.prompts import chapter_consistency_check_prompt
+
+    adapter = create_llm_adapter(
+        interface_format=settings.LLM_INTERFACE_FORMAT,
+        base_url=settings.LLM_BASE_URL,
+        model_name=settings.LLM_MODEL,
+        api_key=settings.LLM_API_KEY,
+        temperature=0.2,
+        max_tokens=settings.LLM_MAX_TOKENS,
+        timeout=settings.LLM_TIMEOUT,
+    )
+
+    excerpt = previous_chapter_draft[-500:] if previous_chapter_draft else "（无前一章）"
+    prompt = chapter_consistency_check_prompt.format(
+        character_state=character_state_text or "（未提供角色状态）",
+        previous_chapter_excerpt=excerpt,
+        chapter_text=chapter_text,
+    )
+    logger.info("Running chapter consistency check ...")
+    result = await _invoke_with_retry(adapter, prompt)
+    if not result:
+        return "CHECK: CONSISTENT (check failed, non-blocking)"
+    return result

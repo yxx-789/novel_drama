@@ -212,6 +212,13 @@ Phase 1: 最小业务闭环 —— 项目 API（已完成）
   - 前端所有导出路径（`handleExportAsset` / `handleExportChapters` / `handleExportEpisode` / `handleExportEpisodesBatch`）404 时弹出 `warning` Toast 而非红色错误条
   - 架构 Tab 加载时 404 静默处理，不显示报错
 
+### P0 内核一致性修复
+
+- [x] **第1章注入角色状态**：`first_chapter_draft_prompt` 增加 `{character_state}` 占位符，`generate_chapter_draft` 第1章时也传入角色状态，确保开篇角色形象与后续章节一致
+- [x] **扩大前文衔接上下文**：`previous_chapter_draft[-500:]` → `[-1500:]`，同时新增 `{previous_chapter_summary}` 双轨输入（前一章概要 + 结尾片段），显著降低"遗忘伏笔"概率
+- [x] **架构一致性校验（第6步）**：Pipeline 新增 Step6，用 LLM 审查核心种子/角色动力学/角色状态/世界观/情节架构五要素之间的矛盾，发现不一致时记录 warning 日志
+- [x] 后端 import 验证通过，前端构建零警告
+
 ## 待办事项
 
 ### ProjectDetail React Query 深度替换（后续迭代）

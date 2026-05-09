@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useMutation } from '@tanstack/react-query'
 import { createProject } from '../api/project'
+import { queryClient } from '../queryClient'
 
 function ProjectCreate() {
   const navigate = useNavigate()
@@ -10,27 +12,28 @@ function ProjectCreate() {
   const [numChapters, setNumChapters] = useState(20)
   const [wordNumber, setWordNumber] = useState(3000)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+
+  const mutation = useMutation({
+    mutationFn: createProject,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      navigate('/projects')
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.detail || '创建项目失败')
+    },
+  })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    setLoading(true)
-
-    try {
-      await createProject({
-        name,
-        topic: topic || undefined,
-        genre: genre || undefined,
-        num_chapters: numChapters,
-        word_number: wordNumber,
-      })
-      navigate('/projects')
-    } catch (err: any) {
-      setError(err.response?.data?.detail || '创建项目失败')
-    } finally {
-      setLoading(false)
-    }
+    mutation.mutate({
+      name,
+      topic: topic || undefined,
+      genre: genre || undefined,
+      num_chapters: numChapters,
+      word_number: wordNumber,
+    })
   }
 
   return (
@@ -136,10 +139,10 @@ function ProjectCreate() {
               </button>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={mutation.isPending}
                 className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50"
               >
-                {loading ? '创建中...' : '创建项目'}
+                {mutation.isPending ? '创建中...' : '创建项目'}
               </button>
             </div>
           </form>

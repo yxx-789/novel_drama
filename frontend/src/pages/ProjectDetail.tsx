@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { getProject, updateProject } from '../api/project'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { getProject, updateProject, exportProject } from '../api/project'
 import type { Project } from '../api/project'
 import { listChapters, createChapter, updateChapter, deleteChapter, exportChaptersBatch } from '../api/chapter'
 import type { Chapter, CreateChapterRequest } from '../api/chapter'
@@ -32,12 +32,25 @@ type TabKey = 'overview' | 'architecture' | 'directory' | 'chapters' | 'drama'
 function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [project, setProject] = useState<Project | null>(null)
   const [chapters, setChapters] = useState<Chapter[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState<TabKey>('overview')
+
+  // 从 URL 读取 tab，无效则默认 overview
+  const urlTab = searchParams.get('tab') as TabKey
+  const initialTab: TabKey = ['overview', 'architecture', 'directory', 'chapters', 'drama'].includes(urlTab)
+    ? urlTab
+    : 'overview'
+  const [activeTab, setActiveTabState] = useState<TabKey>(initialTab)
   const [chatOpen, setChatOpen] = useState(false)
+
+  const setActiveTab = (tab: TabKey) => {
+    setActiveTabState(tab)
+    setSearchParams({ tab }, { replace: true })
+    setError('')
+  }
 
   // Overview edit state
   const [editing, setEditing] = useState(false)
@@ -74,6 +87,7 @@ function ProjectDetail() {
     finalized_text: '',
     status: 'draft',
   })
+  const [chapterSearchQuery, setChapterSearchQuery] = useState("")
 
   // Drama tab state
   const [dramaEpisodes, setDramaEpisodes] = useState<DramaEpisode[]>([])
@@ -845,13 +859,38 @@ function ProjectDetail() {
             </button>
             <h1 className="text-xl font-serif font-medium text-slate-800 tracking-wide">{project.name}</h1>
           </div>
-          <button
-            onClick={() => setChatOpen(true)}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100 transition-colors"
-          >
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={async () => {
+                if (!id) return
+                try {
+                  const blob = await exportProject(id)
+                  const url = window.URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = `${project?.name || 'project'}_export.md`
+                  document.body.appendChild(a)
+                  a.click()
+                  a.remove()
+                  window.URL.revokeObjectURL(url)
+                } catch (err: any) {
+                  setError(err.response?.data?.detail || '导出失败')
+                }
+              }}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-50 text-slate-700 text-sm font-medium hover:bg-slate-100 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              ><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+              <span>导出项目</span>
+            </button>
+            <button
+              onClick={() => setChatOpen(true)}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100 transition-colors"
+            >
             <span>🤖</span>
             <span>AI 助手</span>
           </button>
+        </div>
         </div>
       </header>
 
@@ -1161,6 +1200,16 @@ function ProjectDetail() {
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-base font-serif font-medium text-slate-800">章节列表</h2>
               <div className="flex items-center space-x-2">
+                <div className="relative">
+                  <svg className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                  <input
+                    type="text"
+                    placeholder="搜索章节..."
+                    value={chapterSearchQuery}
+                    onChange={(e) => setChapterSearchQuery(e.target.value)}
+                    className="pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 w-48"
+                  />
+                </div>
                 <button
                   onClick={() => handleExportChapters('md')}
                   className="btn-secondary text-[10px] py-1.5 px-3"
@@ -1327,6 +1376,16 @@ function ProjectDetail() {
                 </div>
                 <div className="space-y-3">
                 {chapters
+                  .filter((c) => {
+                    if (!chapterSearchQuery.trim()) return true
+                    const q = chapterSearchQuery.toLowerCase()
+                    return (
+                      c.title?.toLowerCase().includes(q) ||
+                      c.outline?.toLowerCase().includes(q) ||
+                      c.draft?.toLowerCase().includes(q) ||
+                      String(c.chapter_num).includes(q)
+                    )
+                  })
                   .sort((a, b) => a.chapter_num - b.chapter_num)
                   .map((chapter) => (
                     <div

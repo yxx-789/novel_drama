@@ -13,6 +13,7 @@ function ProjectList() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     const init = async () => {
@@ -54,6 +55,16 @@ function ProjectList() {
       setError(err.response?.data?.detail || '删除失败')
     }
   }
+
+  const filteredProjects = projects.filter((p) => {
+    if (!searchQuery.trim()) return true
+    const q = searchQuery.toLowerCase()
+    return (
+      p.name.toLowerCase().includes(q) ||
+      (p.topic && p.topic.toLowerCase().includes(q)) ||
+      (p.genre && p.genre.toLowerCase().includes(q))
+    )
+  })
 
   const statusBadge = (status: string) => {
     const map: Record<string, string> = {
@@ -98,30 +109,51 @@ function ProjectList() {
           </div>
         )}
 
-        <div className="flex justify-between items-center">
-          <p className="text-xs text-slate-400 font-medium">
-            共 {projects.length} 个项目
-          </p>
+        <div className="flex items-center space-x-3">
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="搜索项目名称、主题或类型..."
+              className="w-full bg-white/80 border border-slate-200 rounded-xl py-2.5 pl-9 pr-4 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 transition-all"
+            />
+            <svg className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
           <button
             onClick={() => navigate('/projects/create')}
-            className="btn-primary"
+            className="btn-primary whitespace-nowrap"
           >
             + 创建项目
           </button>
+        </div>
+
+        <div className="flex justify-between items-center">
+          <p className="text-xs text-slate-400 font-medium">
+            {searchQuery.trim()
+              ? `找到 ${filteredProjects.length} 个匹配项目（共 ${projects.length} 个）`
+              : `共 ${projects.length} 个项目`}
+          </p>
         </div>
 
         {loading ? (
           <div className="glass-panel p-12 text-center">
             <p className="text-slate-400 text-sm">加载中...</p>
           </div>
-        ) : projects.length === 0 ? (
+        ) : filteredProjects.length === 0 ? (
           <div className="glass-panel p-16 text-center space-y-4">
-            <p className="text-slate-400 text-sm">还没有项目</p>
-            <p className="text-[10px] text-slate-300 tracking-widest uppercase">点击上方按钮开启创作之旅</p>
+            <p className="text-slate-400 text-sm">
+              {searchQuery.trim() ? '没有找到匹配的项目' : '还没有项目'}
+            </p>
+            {!searchQuery.trim() && (
+              <p className="text-xs text-slate-300">点击上方按钮开启创作之旅</p>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {projects.map((project) => (
+            {filteredProjects.map((project) => (
               <div
                 key={project.id}
                 className="glass-panel p-6 card-hover cursor-pointer group"

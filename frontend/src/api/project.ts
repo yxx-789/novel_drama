@@ -53,3 +53,10 @@ export const updateProject = async (id: string, data: UpdateProjectRequest): Pro
 export const deleteProject = async (id: string): Promise<void> => {
   await apiClient.delete(`/api/projects/${id}`)
 }
+
+export const exportProject = async (id: string): Promise<Blob> => {
+  const response = await apiClient.get(`/api/projects/${id}/export`, {
+    responseType: 'blob',
+  })
+  return response.data
+}

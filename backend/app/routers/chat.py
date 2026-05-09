@@ -15,6 +15,7 @@ from app.schemas.chat import (
     ChatSessionOut,
 )
 from app.models.chat import ChatMessage
+from app.models.chat import ChatSession
 from app.services.chat_service import (
     create_session,
     get_session_with_messages,
@@ -91,6 +92,26 @@ async def get_chat_session(
         updated_at=session.updated_at,
         messages=messages,
     )
+
+
+@router.delete("/chat-sessions/{session_id}", status_code=204)
+async def delete_chat_session(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(ChatSession).where(
+            ChatSession.id == str(session_id),
+            ChatSession.user_id == str(current_user.id),
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在或无权限访问")
+    await db.delete(session)
+    await db.commit()
+    return None
 
 
 @router.post("/chat-sessions/{session_id}/messages", response_model=ChatMessageOut)

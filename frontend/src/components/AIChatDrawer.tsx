@@ -3,6 +3,7 @@ import { marked } from 'marked'
 import type { ChatMessage, ChatSession } from '../api/chat'
 import {
   createChatSession,
+  deleteChatSession,
   getChatSession,
   listProjectChatSessions,
   sendChatMessage,
@@ -34,6 +35,11 @@ function AIChatDrawer({ projectId, isOpen, onClose }: AIChatDrawerProps) {
   const [showSessionList, setShowSessionList] = useState(false)
   const [initLoading, setInitLoading] = useState(false)
   const messagesEndRef = useRef(null as HTMLDivElement | null)
+
+  // 打字机效果状态
+  const [displayedTexts, setDisplayedTexts] = useState({} as Record<string, string>)
+  const [typingDone, setTypingDone] = useState(new Set<string>())
+  const typingIntervalRef = useRef(null as ReturnType<typeof setInterval> | null)
 
   // 初始化：加载会话列表
   useEffect(() => {
@@ -79,6 +85,44 @@ function AIChatDrawer({ projectId, isOpen, onClose }: AIChatDrawerProps) {
     }
   }
 
+  // 清理打字机 interval
+  useEffect(() => {
+    return () => {
+      if (typingIntervalRef.current) {
+        clearInterval(typingIntervalRef.current)
+      }
+    }
+  }, [])
+
+  const startTyping = (messageId: string, fullText: string) => {
+    // 先显示为空，逐步追加
+    setDisplayedTexts((prev) => ({ ...prev, [messageId]: '' }))
+    setTypingDone((prev) => {
+      const next = new Set(prev)
+      next.delete(messageId)
+      return next
+    })
+
+    let index = 0
+    if (typingIntervalRef.current) {
+      clearInterval(typingIntervalRef.current)
+    }
+
+    typingIntervalRef.current = setInterval(() => {
+      index++
+      if (index >= fullText.length) {
+        if (typingIntervalRef.current) {
+          clearInterval(typingIntervalRef.current)
+          typingIntervalRef.current = null
+        }
+        setDisplayedTexts((prev) => ({ ...prev, [messageId]: fullText }))
+        setTypingDone((prev) => new Set(prev).add(messageId))
+      } else {
+        setDisplayedTexts((prev) => ({ ...prev, [messageId]: fullText.slice(0, index) }))
+      }
+    }, 12)
+  }
+
   const handleSend = async (content: string) => {
     if (!content.trim() || !activeSessionId || loading) return
 
@@ -102,6 +146,8 @@ function AIChatDrawer({ projectId, isOpen, onClose }: AIChatDrawerProps) {
       setMessages((prev: ChatMessage[]) =>
         prev.filter((m: ChatMessage) => m.id !== userMsg.id).concat(assistantMsg)
       )
+      // 启动打字机效果
+      startTyping(assistantMsg.id, assistantMsg.content)
     } catch (e) {
       console.error('发送消息失败', e)
       const errorMsg: ChatMessage = {
@@ -118,6 +164,7 @@ function AIChatDrawer({ projectId, isOpen, onClose }: AIChatDrawerProps) {
       setMessages((prev: ChatMessage[]) =>
         prev.filter((m: ChatMessage) => m.id !== userMsg.id).concat(errorMsg)
       )
+      startTyping(errorMsg.id, errorMsg.content)
     } finally {
       setLoading(false)
     }
@@ -132,6 +179,20 @@ function AIChatDrawer({ projectId, isOpen, onClose }: AIChatDrawerProps) {
       setShowSessionList(false)
     } catch (e) {
       console.error('创建会话失败', e)
+    }
+  }
+
+  const handleDeleteSession = async (sessionId: string) => {
+    if (!confirm('确定要删除这个会话吗？')) return
+    try {
+      await deleteChatSession(sessionId)
+      setSessions((prev: ChatSession[]) => prev.filter((s) => s.id !== sessionId))
+      if (activeSessionId === sessionId) {
+        setActiveSessionId(null)
+        setMessages([])
+      }
+    } catch (e) {
+      console.error('删除会话失败', e)
     }
   }
 
@@ -190,17 +251,30 @@ function AIChatDrawer({ projectId, isOpen, onClose }: AIChatDrawerProps) {
             </div>
             <div className="max-h-40 overflow-y-auto">
               {sessions.map((s: ChatSession) => (
-                <button
+                <div
                   key={s.id}
-                  onClick={() => loadSession(s.id)}
-                  className={`w-full text-left px-4 py-2 text-xs transition-colors ${
+                  className={`flex items-center justify-between px-4 py-2 text-xs transition-colors group ${
                     s.id === activeSessionId
                       ? 'bg-indigo-50 text-indigo-700'
                       : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  <span className="truncate block">{s.title || '未命名会话'}</span>
-                </button>
+                  <button
+                    onClick={() => loadSession(s.id)}
+                    className="flex-1 text-left truncate"
+                  >
+                    {s.title || '未命名会话'}
+                  </button>
+                  <button
+                    onClick={() => handleDeleteSession(s.id)}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                    title="删除会话"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
               ))}
               {sessions.length === 0 && (
                 <div className="px-4 py-3 text-xs text-slate-400 text-center">暂无会话</div>
@@ -246,11 +320,16 @@ function AIChatDrawer({ projectId, isOpen, onClose }: AIChatDrawerProps) {
                   <div className="max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed bg-indigo-500 text-white rounded-br-md">
                     {msg.content}
                   </div>
-                ) : (
+                ) : typingDone.has(msg.id) ? (
                   <div
                     className="max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed bg-white border border-slate-100 text-slate-700 rounded-bl-md shadow-sm chat-markdown"
                     dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
                   />
+                ) : (
+                  <div className="max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed bg-white border border-slate-100 text-slate-700 rounded-bl-md shadow-sm whitespace-pre-wrap">
+                    {displayedTexts[msg.id] || ''}
+                    <span className="inline-block w-0.5 h-4 bg-indigo-400 ml-0.5 align-text-bottom animate-pulse" />
+                  </div>
                 )}
               </div>
             ))

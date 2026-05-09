@@ -1,45 +1,46 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { listProjects, deleteProject } from '../api/project'
 import { getCurrentUser } from '../api/auth'
 import { useAuthStore } from '../store/auth'
+import { queryClient } from '../queryClient'
 import type { Project } from '../api/project'
-import type { User } from '../api/auth'
 
 function ProjectList() {
   const navigate = useNavigate()
-  const { user, setUser, clearAuth } = useAuthStore()
-  const [currentUser, setCurrentUser] = useState<User | null>(user)
-  const [projects, setProjects] = useState<Project[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const { user, clearAuth } = useAuthStore()
   const [searchQuery, setSearchQuery] = useState('')
 
-  useEffect(() => {
-    const init = async () => {
-      try {
-        const u = await getCurrentUser()
-        setCurrentUser(u)
-        setUser(u)
-      } catch (err: any) {
-        if (err.response?.status === 401) {
+  // 获取当前用户
+  useQuery({
+    queryKey: ['me'],
+    queryFn: getCurrentUser,
+    enabled: !user,
+    retry: false,
+    meta: {
+      onError: (err: any) => {
+        if (err?.response?.status === 401) {
           clearAuth()
           navigate('/login')
-          return
         }
-      }
+      },
+    },
+  })
 
-      try {
-        const data = await listProjects()
-        setProjects(data)
-      } catch (err: any) {
-        setError(err.response?.data?.detail || '获取项目列表失败')
-      } finally {
-        setLoading(false)
-      }
-    }
-    init()
-  }, [navigate, setUser, clearAuth])
+  // 获取项目列表
+  const { data: projects = [], isLoading, error } = useQuery({
+    queryKey: ['projects'],
+    queryFn: listProjects,
+  })
+
+  // 删除项目
+  const deleteMutation = useMutation({
+    mutationFn: deleteProject,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
 
   const handleLogout = () => {
     clearAuth()
@@ -48,15 +49,10 @@ function ProjectList() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('确定要删除这个项目吗？')) return
-    try {
-      await deleteProject(id)
-      setProjects(projects.filter((p) => p.id !== id))
-    } catch (err: any) {
-      setError(err.response?.data?.detail || '删除失败')
-    }
+    deleteMutation.mutate(id)
   }
 
-  const filteredProjects = projects.filter((p) => {
+  const filteredProjects = projects.filter((p: Project) => {
     if (!searchQuery.trim()) return true
     const q = searchQuery.toLowerCase()
     return (
@@ -93,8 +89,8 @@ function ProjectList() {
           <p className="text-[10px] font-bold text-slate-400 tracking-[0.3em] uppercase mt-1">Project Workspace</p>
         </div>
         <div className="flex items-center space-x-4">
-          {currentUser && (
-            <span className="text-xs text-slate-400 font-medium">{currentUser.username}</span>
+          {user && (
+            <span className="text-xs text-slate-400 font-medium">{user.username}</span>
           )}
           <button onClick={handleLogout} className="btn-ghost">
             退出
@@ -105,7 +101,7 @@ function ProjectList() {
       <main className="max-w-6xl mx-auto space-y-6">
         {error && (
           <div className="p-4 bg-rose-50/80 text-rose-600 rounded-2xl text-xs text-center font-medium tracking-wide">
-            {error}
+            获取项目列表失败
           </div>
         )}
 
@@ -138,7 +134,7 @@ function ProjectList() {
           </p>
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <div className="glass-panel p-12 text-center">
             <p className="text-slate-400 text-sm">加载中...</p>
           </div>
@@ -153,7 +149,7 @@ function ProjectList() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filteredProjects.map((project) => (
+            {filteredProjects.map((project: Project) => (
               <div
                 key={project.id}
                 className="glass-panel p-6 card-hover cursor-pointer group"

@@ -1,4 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { queryClient } from './queryClient'
 import Login from './pages/Login'
 import ProjectList from './pages/ProjectList'
 import ProjectCreate from './pages/ProjectCreate'
@@ -15,9 +17,10 @@ function RequireAuth() {
 
 function App() {
   return (
-    <BrowserRouter>
-      <Toast />
-      <Routes>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Toast />
+        <Routes>
         <Route path="/login" element={<Login />} />
         <Route element={<RequireAuth />}>
           <Route path="/projects" element={<ProjectList />} />
@@ -28,6 +31,7 @@ function App() {
         </Route>
       </Routes>
     </BrowserRouter>
+    </QueryClientProvider>
   )
 }
 

@@ -46,11 +46,28 @@ function ProjectDetail() {
   const [activeTab, setActiveTabState] = useState<TabKey>(initialTab)
   const [chatOpen, setChatOpen] = useState(false)
 
+  const [dirty, setDirty] = useState(false)
+
   const setActiveTab = (tab: TabKey) => {
+    if (dirty && tab !== activeTab) {
+      if (!confirm('您有未保存的修改，确定要切换吗？')) return
+    }
     setActiveTabState(tab)
     setSearchParams({ tab }, { replace: true })
     setError('')
   }
+
+  // 刷新/关闭前提醒未保存修改
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (dirty) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [dirty])
 
   // Overview edit state
   const [editing, setEditing] = useState(false)
@@ -311,6 +328,7 @@ function ProjectDetail() {
       })
       setProject(updated)
       setEditing(false)
+      setDirty(false)
     } catch (err: any) {
       setError(err.response?.data?.detail || '保存失败')
     } finally {
@@ -323,10 +341,24 @@ function ProjectDetail() {
     setArchitectureSaving(true)
     try {
       await upsertAsset(id, 'architecture', { content_text: architectureText })
+      setDirty(false)
     } catch (err: any) {
       setError(err.response?.data?.detail || '保存架构失败')
     } finally {
       setArchitectureSaving(false)
+    }
+  }
+
+  const handleSaveDirectory = async () => {
+    if (!id) return
+    setDirectorySaving(true)
+    try {
+      await upsertAsset(id, 'directory', { content_text: directoryText })
+      setDirty(false)
+    } catch (err: any) {
+      setError(err.response?.data?.detail || '保存目录失败')
+    } finally {
+      setDirectorySaving(false)
     }
   }
 
@@ -361,17 +393,6 @@ function ProjectDetail() {
     }
   }
 
-  const handleSaveDirectory = async () => {
-    if (!id) return
-    setDirectorySaving(true)
-    try {
-      await upsertAsset(id, 'directory', { content_text: directoryText })
-    } catch (err: any) {
-      setError(err.response?.data?.detail || '保存目录失败')
-    } finally {
-      setDirectorySaving(false)
-    }
-  }
 
   const handleGenerateDirectory = async () => {
     if (!id) return
@@ -675,6 +696,7 @@ function ProjectDetail() {
       const newChapter = await createChapter(id, chapterForm)
       setChapters([...chapters, newChapter])
       setShowAddChapter(false)
+      setDirty(false)
       resetChapterForm()
     } catch (err: any) {
       setError(err.response?.data?.detail || '创建章节失败')
@@ -686,6 +708,7 @@ function ProjectDetail() {
       const updated = await updateChapter(chapterId, chapterForm)
       setChapters(chapters.map((c) => (c.id === chapterId ? updated : c)))
       setEditingChapterId(null)
+      setDirty(false)
       resetChapterForm()
     } catch (err: any) {
       setError(err.response?.data?.detail || '更新章节失败')
@@ -704,6 +727,7 @@ function ProjectDetail() {
 
   const startEditChapter = (chapter: Chapter) => {
     setEditingChapterId(chapter.id)
+    setDirty(true)
     setChapterForm({
       chapter_num: chapter.chapter_num,
       title: chapter.title,
@@ -975,7 +999,7 @@ function ProjectDetail() {
               <h2 className="text-base font-serif font-medium text-slate-800">项目信息</h2>
               {!editing && (
                 <button
-                  onClick={() => setEditing(true)}
+                  onClick={() => { setEditing(true); setDirty(true) }}
                   className="px-4 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-500"
                 >
                   编辑
@@ -1046,7 +1070,7 @@ function ProjectDetail() {
                 </div>
                 <div className="flex justify-end space-x-4 pt-4">
                   <button
-                    onClick={() => setEditing(false)}
+                    onClick={() => { setEditing(false); setDirty(false) }}
                     className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50"
                   >
                     取消
@@ -1128,7 +1152,7 @@ function ProjectDetail() {
               <>
                 <textarea
                   value={architectureText}
-                  onChange={(e) => setArchitectureText(e.target.value)}
+                  onChange={(e) => { setArchitectureText(e.target.value); setDirty(true) }}
                   rows={20}
                   className="block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 font-mono text-sm leading-relaxed"
                   placeholder="在此编辑小说架构：世界观、主线情节、角色设定..."
@@ -1186,7 +1210,7 @@ function ProjectDetail() {
             ) : (
               <textarea
                 value={directoryText}
-                onChange={(e) => setDirectoryText(e.target.value)}
+                onChange={(e) => { setDirectoryText(e.target.value); setDirty(true) }}
                 rows={24}
                 className="block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 font-mono text-sm leading-relaxed"
                 placeholder="在此编辑章节目录..."
@@ -1227,7 +1251,7 @@ function ProjectDetail() {
                 <button
                   onClick={() => {
                     resetChapterForm()
-                    setShowAddChapter(true)
+                    setShowAddChapter(true); setDirty(true)
                     setEditingChapterId(null)
                   }}
                   className="px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700"
@@ -1312,6 +1336,7 @@ function ProjectDetail() {
                     onClick={() => {
                       setShowAddChapter(false)
                       setEditingChapterId(null)
+                      setDirty(false)
                       resetChapterForm()
                     }}
                     className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50"

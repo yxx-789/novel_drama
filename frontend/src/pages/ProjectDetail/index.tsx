@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useToastStore } from '../../store/toast'
 import { getProject, updateProject, exportProject } from '../../api/project'
 import type { Project } from '../../api/project'
 import { listChapters, createChapter, updateChapter, deleteChapter, exportChaptersBatch, exportChapters } from '../../api/chapter'
@@ -251,7 +252,9 @@ function ProjectDetail() {
         setArchitectureText(archAsset.content_text || '')
         setCharacterText(charAsset.content_text || '')
       } catch (err: any) {
-        setError(err.response?.data?.detail || '获取架构/人物状态失败')
+        if (err.response?.status !== 404) {
+          setError(err.response?.data?.detail || '获取架构/人物状态失败')
+        }
       } finally {
         setArchitectureLoading(false)
       }
@@ -591,13 +594,30 @@ function ProjectDetail() {
     }
   }
 
+  const toast = useToastStore((s) => s.addToast)
+
   const handleExportEpisode = async (episodeId: string, format: 'json' | 'md' | 'csv') => {
     try {
       const blob = await exportEpisodeScript(episodeId, format)
       const ext = format === 'md' ? 'md' : format
       downloadBlob(blob, `episode_${episodeId.slice(0, 8)}.${ext}`)
     } catch (err: any) {
-      setError(err.response?.data?.detail || '导出失败')
+      if (err.response?.status === 404) {
+        toast('该内容尚未生成', 'warning')
+      } else {
+        setError(err.response?.data?.detail || '导出失败')
+      }
+    }
+  }
+
+  const handleExportEpisodesBatch = async (ids: string[], format: 'md' | 'json') => {
+    try {
+      return await exportEpisodesBatch(ids, format)
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        toast('该内容尚未生成', 'warning')
+      }
+      throw err
     }
   }
 
@@ -625,7 +645,11 @@ function ProjectDetail() {
       const blob = await exportAsset(id, assetType, format)
       downloadBlob(blob, `${assetType}.${format}`)
     } catch (err: any) {
-      setError(err.response?.data?.detail || '导出失败')
+      if (err.response?.status === 404) {
+        toast('该内容尚未生成，请先使用 AI 生成', 'warning')
+      } else {
+        setError(err.response?.data?.detail || '导出失败')
+      }
     }
   }
 
@@ -635,7 +659,11 @@ function ProjectDetail() {
       const blob = await exportChapters(id, format)
       downloadBlob(blob, `chapters.${format}`)
     } catch (err: any) {
-      setError(err.response?.data?.detail || '导出失败')
+      if (err.response?.status === 404) {
+        toast('暂无章节可导出', 'warning')
+      } else {
+        setError(err.response?.data?.detail || '导出失败')
+      }
     }
   }
 
@@ -905,7 +933,13 @@ function ProjectDetail() {
               exportChaptersBatch(ids, 'md')
                 .then((blob) => downloadBlob(blob, 'chapters_batch.md'))
                 .then(() => setSelectedChapterIds(new Set()))
-                .catch((err: any) => setError(err.response?.data?.detail || '导出失败'))
+                .catch((err: any) => {
+                  if (err.response?.status === 404) {
+                    toast('选中的章节中有没有内容可导出的', 'warning')
+                  } else {
+                    setError(err.response?.data?.detail || '导出失败')
+                  }
+                })
             }}
           />
         )}
@@ -927,7 +961,7 @@ function ProjectDetail() {
             onUpdateSourceChapters={handleUpdateSourceChapters}
             onUpdateOutline={handleUpdateOutline}
             onOpenChapterSelector={openChapterSelector}
-            onExportEpisodesBatch={exportEpisodesBatch}
+            onExportEpisodesBatch={handleExportEpisodesBatch}
           />
         )}
       </main>

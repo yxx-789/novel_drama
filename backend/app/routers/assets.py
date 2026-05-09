@@ -38,7 +38,7 @@ async def export_asset(
     )
     asset = result.scalar_one_or_none()
     if not asset or not asset.content_text:
-        raise HTTPException(status_code=404, detail="资产不存在或内容为空")
+        raise HTTPException(status_code=404, detail="该内容尚未生成")
 
     content = asset.content_text
     if format.value == "json":
@@ -76,7 +76,7 @@ async def get_asset(
     )
     asset = result.scalar_one_or_none()
     if not asset:
-        raise HTTPException(status_code=404, detail="资产不存在")
+        raise HTTPException(status_code=404, detail="该内容尚未生成")
     return {
         "id": asset.id,
         "project_id": asset.project_id,

@@ -197,3 +197,27 @@ Phase 1: 最小业务闭环 —— 项目 API（已完成）
   - [x] `utils.tsx` — 共享工具（pollTask, ProgressBar, statusBadge 等）
   - [x] `index.tsx` — 主壳：状态管理 + Header + Tab 切换 + 模态框
 - [x] 前端编译通过，构建成功
+
+### P1 代码质量优化
+
+- [x] React Query 基础设施：`queryClient.ts` + `QueryClientProvider` 包裹 App
+- [x] ProjectList 接入 React Query：`useQuery` 获取项目列表，`useMutation` 删除项目，自动刷新
+- [x] 清理空目录：`hooks/`、`types/`（删除）
+- [x] 删除死代码：`Dashboard.tsx` 页面（未在路由中引用）
+- [x] 创建 `usePollingTask` hook：替代内联 `pollTask`，支持自动清理
+- [x] 前端编译通过，零警告
+- [x] 新建项目后列表自动刷新：ProjectCreate `useMutation` 成功时 `invalidateQueries(['projects'])`
+- [x] "资产不存在" UX 优化：
+  - 后端 `assets.py` 错误文案改为 `"该内容尚未生成"`
+  - 前端所有导出路径（`handleExportAsset` / `handleExportChapters` / `handleExportEpisode` / `handleExportEpisodesBatch`）404 时弹出 `warning` Toast 而非红色错误条
+  - 架构 Tab 加载时 404 静默处理，不显示报错
+
+## 待办事项
+
+### ProjectDetail React Query 深度替换（后续迭代）
+
+- [ ] 项目详情 `useQuery(['project', id])`
+- [ ] 章节列表 `useQuery(['chapters', id])`
+- [ ] 架构/目录资产 `useQuery(['asset', id, type])`
+- [ ] 短剧剧集 `useQuery(['dramaEpisodes', id])`
+- [ ] 各 Tab 保存操作 `useMutation` + `invalidateQueries`

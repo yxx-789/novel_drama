@@ -257,6 +257,7 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
             await update_task_status(db, task_id, "running", progress=30)
 
             previous_draft = None
+            previous_summary = ""
             if chapter_num > 1:
                 from app.models.project import Chapter
                 result = await db.execute(
@@ -268,6 +269,7 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                 prev_chapter = result.scalar_one_or_none()
                 if prev_chapter:
                     previous_draft = prev_chapter.draft
+                    previous_summary = prev_chapter.outline or ""
 
             await update_task_status(db, task_id, "running", progress=50)
             draft_text = await generate_chapter_draft(
@@ -277,6 +279,7 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                 directory_text=directory_text,
                 character_state_text=character_state_text,
                 previous_chapter_draft=previous_draft,
+                previous_chapter_summary=previous_summary,
             )
 
             await update_task_status(db, task_id, "running", progress=70)
@@ -408,6 +411,7 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                 logger.info(f"Batch task {task_id}: generating chapter {chapter_num} ({idx + 1}/{total}) ...")
 
                 previous_draft = None
+                previous_summary = ""
                 if chapter_num > 1:
                     result = await db.execute(
                         select(Chapter).where(
@@ -418,6 +422,7 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                     prev_chapter = result.scalar_one_or_none()
                     if prev_chapter:
                         previous_draft = prev_chapter.draft
+                        previous_summary = prev_chapter.outline or ""
 
                 draft_text = await generate_chapter_draft(
                     project,
@@ -426,6 +431,7 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                     directory_text=directory_text,
                     character_state_text=character_state_text,
                     previous_chapter_draft=previous_draft,
+                    previous_chapter_summary=previous_summary,
                 )
 
                 chapter.draft = draft_text

@@ -12,6 +12,7 @@ from app.generator.llm_adapter import create_llm_adapter
 import re
 
 from app.generator.prompts import (
+    architecture_consistency_prompt,
     chapter_blueprint_prompt,
     character_dynamics_prompt,
     core_seed_prompt,
@@ -122,6 +123,24 @@ async def generate_architecture(
     plot_arch_result = await _invoke_with_retry(adapter, prompt_plot)
     if not plot_arch_result:
         raise RuntimeError("plot_architecture_prompt generation failed")
+
+    # Step6: 架构一致性校验
+    logger.info("Step6: Running architecture consistency check ...")
+    try:
+        prompt_check = architecture_consistency_prompt.format(
+            core_seed=core_seed_result,
+            character_dynamics=character_dynamics_result,
+            character_state=character_state_result,
+            world_building=world_building_result,
+            plot_architecture=plot_arch_result,
+        )
+        check_result = await _invoke_with_retry(adapter, prompt_check)
+        if check_result and "INCONSISTENT" in check_result.upper():
+            logger.warning(f"Architecture consistency issues detected:\n{check_result}")
+        else:
+            logger.info("Architecture consistency check passed.")
+    except Exception as e:
+        logger.warning(f"Architecture consistency check failed (non-blocking): {e}")
 
     # 组装最终架构文本
     architecture_text = (
@@ -290,6 +309,7 @@ async def generate_chapter_draft(
     directory_text: str,
     character_state_text: str = "",
     previous_chapter_draft: str | None = None,
+    previous_chapter_summary: str = "",
 ) -> str:
     """
     单章正文生成。
@@ -323,6 +343,7 @@ async def generate_chapter_draft(
         logger.info(f"Generating chapter {chapter_num} draft (first chapter) ...")
         prompt = first_chapter_draft_prompt.format(
             novel_setting=architecture_text,
+            character_state=character_state_text or "（暂无角色状态记录）",
             chapter_title=current_chapter["chapter_title"],
             chapter_summary=current_chapter["chapter_summary"],
             word_number=word_number,
@@ -331,10 +352,11 @@ async def generate_chapter_draft(
         logger.info(f"Generating chapter {chapter_num} draft ...")
         excerpt = ""
         if previous_chapter_draft:
-            excerpt = previous_chapter_draft[-500:]
+            excerpt = previous_chapter_draft[-1500:]
         prompt = next_chapter_draft_prompt.format(
             novel_setting=architecture_text,
             character_state=character_state_text,
+            previous_chapter_summary=previous_chapter_summary or "（暂无前一章概要）",
             previous_chapter_excerpt=excerpt,
             chapter_number=chapter_num,
             chapter_title=current_chapter["chapter_title"],

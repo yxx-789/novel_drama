@@ -24,3 +24,15 @@ export const upsertAsset = async (projectId: string, assetType: string, data: Up
   const response = await apiClient.put<Asset>(`/api/projects/${projectId}/assets/${assetType}`, data)
   return response.data
 }
+
+export const exportAsset = async (
+  projectId: string,
+  assetType: string,
+  format: 'md' | 'json' = 'md'
+): Promise<Blob> => {
+  const response = await apiClient.get(`/api/projects/${projectId}/assets/${assetType}/export`, {
+    params: { format },
+    responseType: 'blob',
+  })
+  return response.data
+}

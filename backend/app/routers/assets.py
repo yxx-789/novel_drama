@@ -1,6 +1,7 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,11 +9,51 @@ from app.infra.database import get_db
 from app.models.project import ProjectAsset
 from app.models.user import User
 from app.routers.dependency import get_current_user
+from app.schemas.drama import ExportFormat
 from app.services.project_service import get_project_by_id
 
 router = APIRouter()
 
 ASSET_TYPES = {"architecture", "directory", "characters", "settings", "drama_plan"}
+
+
+@router.get("/projects/{project_id}/assets/{asset_type}/export")
+async def export_asset(
+    project_id: uuid.UUID,
+    asset_type: str,
+    format: ExportFormat = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if asset_type not in ASSET_TYPES:
+        raise HTTPException(status_code=400, detail=f"不支持的资产类型: {asset_type}")
+    project = await get_project_by_id(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在或无权限访问")
+    result = await db.execute(
+        select(ProjectAsset).where(
+            ProjectAsset.project_id == str(project_id),
+            ProjectAsset.asset_type == asset_type,
+        )
+    )
+    asset = result.scalar_one_or_none()
+    if not asset or not asset.content_text:
+        raise HTTPException(status_code=404, detail="资产不存在或内容为空")
+
+    content = asset.content_text
+    if format.value == "json":
+        content = f'{{"asset_type": "{asset_type}", "content": {repr(content)[1:-1]}}}'
+        media_type = "application/json"
+        ext = "json"
+    else:
+        media_type = "text/markdown; charset=utf-8"
+        ext = "md"
+
+    return StreamingResponse(
+        iter([content.encode("utf-8")]),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{asset_type}.{ext}"'},
+    )
 
 
 @router.get("/projects/{project_id}/assets/{asset_type}")

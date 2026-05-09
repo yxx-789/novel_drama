@@ -144,5 +144,9 @@ Phase 1: 最小业务闭环 —— 项目 API（已完成）
 
 ## 待办事项
 
-- [ ] 导出 API（JSON / Markdown / CSV）
-- [ ] 接入真实 novel_to_drama LLM 生成（episode_mapper + script_generator prompt 复用）
+- [x] 角色状态追踪（update_character_state_prompt + task_service 读写 characters asset）
+- [x] 接入真实 novel_to_drama LLM 生成（episode_mapper + script_generator prompt 复用）
+- [x] 导出 API（JSON / Markdown / CSV）
+- [x] 导出选择 + 批量导出（章节/剧集均支持复选框多选 + 批量导出 MD/JSON）
+- [x] 脚本生成章节选择（生成脚本前弹出章节选择器，支持自定义来源章节）
+- [x] 续集记忆机制（自动生成前集上下文摘要注入 prompt，保证角色/道具/剧情一致性）

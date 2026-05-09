@@ -21,7 +21,6 @@ function Login() {
     try {
       if (isRegister) {
         await register({ username, email, password })
-        // 注册成功后自动登录
         const tokenRes = await login({ username, password })
         setToken(tokenRes.access_token)
       } else {
@@ -29,12 +28,11 @@ function Login() {
         setToken(tokenRes.access_token)
       }
 
-      // 获取用户信息
       const { data } = await import('../api/auth').then((m) =>
         m.getCurrentUser().then((u) => ({ data: u })),
       )
       setUser(data)
-      navigate('/dashboard')
+      navigate('/projects')
     } catch (err: any) {
       const msg = err.response?.data?.detail || '操作失败，请重试'
       setError(msg)
@@ -44,29 +42,33 @@ function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-        <h1 className="text-2xl font-bold mb-6 text-center">
-          AI 小说 & 短剧创作工作台
-        </h1>
-        <p className="text-center text-gray-500 mb-4">
-          {isRegister ? '注册新账号' : '登录'}
-        </p>
+    <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="glass-panel w-full max-w-md p-10 md:p-12 space-y-8">
+        <div className="text-center space-y-3">
+          <h1 className="text-2xl font-serif font-medium text-slate-800 tracking-wide">
+            AI 小说 & 短剧创作工作台
+          </h1>
+          <p className="text-[11px] font-bold text-slate-400 tracking-[0.3em] uppercase">
+            {isRegister ? 'Create Account' : 'Welcome Back'}
+          </p>
+        </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-md text-sm">
+          <div className="p-4 bg-rose-50/80 text-rose-600 rounded-2xl text-xs text-center font-medium tracking-wide">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700">用户名</label>
+            <label className="block text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-2">
+              用户名
+            </label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              className="input-glass"
               placeholder="请输入用户名"
               required
             />
@@ -74,12 +76,14 @@ function Login() {
 
           {isRegister && (
             <div>
-              <label className="block text-sm font-medium text-gray-700">邮箱</label>
+              <label className="block text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-2">
+                邮箱
+              </label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="input-glass"
                 placeholder="请输入邮箱"
                 required
               />
@@ -87,12 +91,14 @@ function Login() {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">密码</label>
+            <label className="block text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-2">
+              密码
+            </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              className="input-glass"
               placeholder="请输入密码"
               required
             />
@@ -101,19 +107,19 @@ function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+            className="w-full btn-primary py-4 disabled:opacity-50 disabled:hover:translate-y-0"
           >
-            {loading ? '处理中...' : isRegister ? '注册' : '登录'}
+            {loading ? '处理中...' : isRegister ? '注 册' : '登 录'}
           </button>
         </form>
 
-        <div className="mt-4 text-center">
+        <div className="text-center pt-2">
           <button
             onClick={() => {
               setIsRegister(!isRegister)
               setError('')
             }}
-            className="text-sm text-indigo-600 hover:text-indigo-500"
+            className="text-xs text-slate-400 hover:text-slate-600 transition-colors tracking-widest"
           >
             {isRegister ? '已有账号？去登录' : '没有账号？去注册'}
           </button>

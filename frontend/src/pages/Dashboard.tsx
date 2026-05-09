@@ -34,33 +34,30 @@ function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900">项目列表</h1>
-          <div className="flex items-center space-x-4">
-            {currentUser && (
-              <span className="text-sm text-gray-600">
-                {currentUser.username}
-              </span>
-            )}
-            <button
-              onClick={handleLogout}
-              className="text-sm text-red-600 hover:text-red-500"
-            >
-              退出登录
-            </button>
-          </div>
+    <div className="min-h-screen p-6 md:p-10">
+      <header className="max-w-6xl mx-auto mb-10 flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-serif font-medium text-slate-800 tracking-wide">工作台</h1>
+          <p className="text-[10px] font-bold text-slate-400 tracking-[0.3em] uppercase mt-1">Dashboard</p>
+        </div>
+        <div className="flex items-center space-x-4">
+          {currentUser && (
+            <span className="text-xs text-slate-400 font-medium">{currentUser.username}</span>
+          )}
+          <button onClick={handleLogout} className="btn-ghost">退出</button>
         </div>
       </header>
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <main className="max-w-6xl mx-auto space-y-6">
         {error && (
-          <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-md text-sm">
+          <div className="p-4 bg-rose-50/80 text-rose-600 rounded-2xl text-xs text-center font-medium tracking-wide">
             {error}
           </div>
         )}
-        <div className="bg-white shadow rounded-lg p-6">
-          <p className="text-gray-500">项目列表将在后续开发中实现</p>
+        <div className="glass-panel p-16 text-center space-y-4">
+          <p className="text-slate-400 text-sm">欢迎回来，{currentUser?.username || '创作者'}</p>
+          <button onClick={() => navigate('/projects')} className="btn-primary">
+            进入项目列表
+          </button>
         </div>
       </main>
     </div>

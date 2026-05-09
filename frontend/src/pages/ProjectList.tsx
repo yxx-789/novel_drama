@@ -55,100 +55,118 @@ function ProjectList() {
     }
   }
 
+  const statusBadge = (status: string) => {
+    const map: Record<string, string> = {
+      draft: 'bg-slate-100 text-slate-500',
+      generating: 'bg-amber-50 text-amber-600',
+      completed: 'bg-emerald-50 text-emerald-600',
+    }
+    const label: Record<string, string> = {
+      draft: '草稿',
+      generating: '生成中',
+      completed: '已完成',
+    }
+    return (
+      <span className={`text-[10px] px-3 py-1 rounded-full font-bold tracking-wider uppercase ${map[status] || map.draft}`}>
+        {label[status] || '草稿'}
+      </span>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900">我的项目</h1>
-          <div className="flex items-center space-x-4">
-            {currentUser && (
-              <span className="text-sm text-gray-600">{currentUser.username}</span>
-            )}
-            <button
-              onClick={handleLogout}
-              className="text-sm text-red-600 hover:text-red-500"
-            >
-              退出登录
-            </button>
-          </div>
+    <div className="min-h-screen p-6 md:p-10">
+      {/* Header */}
+      <header className="max-w-6xl mx-auto mb-10 flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-serif font-medium text-slate-800 tracking-wide">我的项目</h1>
+          <p className="text-[10px] font-bold text-slate-400 tracking-[0.3em] uppercase mt-1">Project Workspace</p>
+        </div>
+        <div className="flex items-center space-x-4">
+          {currentUser && (
+            <span className="text-xs text-slate-400 font-medium">{currentUser.username}</span>
+          )}
+          <button onClick={handleLogout} className="btn-ghost">
+            退出
+          </button>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <main className="max-w-6xl mx-auto space-y-6">
         {error && (
-          <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-md text-sm">{error}</div>
+          <div className="p-4 bg-rose-50/80 text-rose-600 rounded-2xl text-xs text-center font-medium tracking-wide">
+            {error}
+          </div>
         )}
 
-        <div className="mb-6 flex justify-between items-center">
-          <h2 className="text-lg font-medium text-gray-900">项目列表</h2>
+        <div className="flex justify-between items-center">
+          <p className="text-xs text-slate-400 font-medium">
+            共 {projects.length} 个项目
+          </p>
           <button
             onClick={() => navigate('/projects/create')}
-            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700"
+            className="btn-primary"
           >
-            创建项目
+            + 创建项目
           </button>
         </div>
 
         {loading ? (
-          <p className="text-gray-500">加载中...</p>
+          <div className="glass-panel p-12 text-center">
+            <p className="text-slate-400 text-sm">加载中...</p>
+          </div>
         ) : projects.length === 0 ? (
-          <div className="bg-white shadow rounded-lg p-8 text-center">
-            <p className="text-gray-500">还没有项目，点击上方按钮创建一个吧</p>
+          <div className="glass-panel p-16 text-center space-y-4">
+            <p className="text-slate-400 text-sm">还没有项目</p>
+            <p className="text-[10px] text-slate-300 tracking-widest uppercase">点击上方按钮开启创作之旅</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {projects.map((project) => (
               <div
                 key={project.id}
-                className="bg-white shadow rounded-lg p-6 hover:shadow-md transition-shadow cursor-pointer"
+                className="glass-panel p-6 card-hover cursor-pointer group"
                 onClick={() => navigate(`/projects/${project.id}`)}
               >
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="text-lg font-semibold text-gray-900 truncate">{project.name}</h3>
-                  <span
-                    className={`text-xs px-2 py-1 rounded-full ${
-                      project.status === 'draft'
-                        ? 'bg-gray-100 text-gray-600'
-                        : project.status === 'generating'
-                        ? 'bg-yellow-100 text-yellow-700'
-                        : 'bg-green-100 text-green-700'
-                    }`}
-                  >
-                    {project.status === 'draft'
-                      ? '草稿'
-                      : project.status === 'generating'
-                      ? '生成中'
-                      : '已完成'}
-                  </span>
+                <div className="flex justify-between items-start mb-4">
+                  <h3 className="text-base font-serif font-medium text-slate-800 truncate pr-2">
+                    {project.name}
+                  </h3>
+                  {statusBadge(project.status)}
                 </div>
-                {project.topic && (
-                  <p className="text-sm text-gray-500 mb-1">主题：{project.topic}</p>
-                )}
-                {project.genre && (
-                  <p className="text-sm text-gray-500 mb-1">类型：{project.genre}</p>
-                )}
-                <p className="text-sm text-gray-500">
-                  计划 {project.num_chapters} 章 / 每章约 {project.word_number} 字
-                </p>
-                <div className="mt-4 flex justify-end space-x-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      navigate(`/projects/${project.id}`)
-                    }}
-                    className="text-sm text-indigo-600 hover:text-indigo-500"
-                  >
-                    查看
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDelete(project.id)
-                    }}
-                    className="text-sm text-red-600 hover:text-red-500"
-                  >
-                    删除
-                  </button>
+
+                <div className="space-y-1.5 mb-6">
+                  {project.topic && (
+                    <p className="text-xs text-slate-400">{project.topic}</p>
+                  )}
+                  {project.genre && (
+                    <p className="text-[10px] text-slate-300 tracking-wider uppercase">{project.genre}</p>
+                  )}
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
+                  <p className="text-[10px] text-slate-300 tracking-wider">
+                    {project.num_chapters} 章 / {project.word_number} 字
+                  </p>
+                  <div className="flex items-center space-x-3">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        navigate(`/projects/${project.id}`)
+                      }}
+                      className="text-[10px] font-bold text-slate-400 hover:text-slate-700 tracking-widest uppercase transition-colors"
+                    >
+                      查看
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDelete(project.id)
+                      }}
+                      className="text-[10px] font-bold text-slate-300 hover:text-rose-500 tracking-widest uppercase transition-colors"
+                    >
+                      删除
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

@@ -19,6 +19,7 @@ from app.generator.prompts import (
     first_chapter_draft_prompt,
     next_chapter_draft_prompt,
     plot_architecture_prompt,
+    update_character_state_prompt,
     world_building_prompt,
 )
 from app.models.project import Project
@@ -142,7 +143,9 @@ async def generate_architecture(
 
 def parse_chapter_blueprint(blueprint_text: str) -> list[dict]:
     """复用自 AI_NovelGenerator/chapter_directory_parser.py"""
-    chunks = re.split(r'\n\s*\n', blueprint_text.strip())
+    # 预处理：去掉 markdown 加粗标记 ** 和行首空白
+    cleaned_text = re.sub(r'\*\*', '', blueprint_text)
+    chunks = re.split(r'\n\s*\n', cleaned_text.strip())
     results = []
     chapter_number_pattern = re.compile(r'^第\s*(\d+)\s*章\s*-\s*\[?(.*?)\]?$')
     role_pattern = re.compile(r'^本章定位：\s*\[?(.*)\]?$')
@@ -248,11 +251,44 @@ async def generate_directory(
     return directory_text, parsed_chapters
 
 
+async def update_character_state(
+    chapter_text: str,
+    old_state: str,
+) -> str:
+    """
+    根据新完成的章节文本更新角色状态。
+    返回：更新后的角色状态文档全文。
+    """
+    if not settings.LLM_API_KEY:
+        raise RuntimeError("LLM API key not configured")
+
+    adapter = create_llm_adapter(
+        interface_format=settings.LLM_INTERFACE_FORMAT,
+        base_url=settings.LLM_BASE_URL,
+        model_name=settings.LLM_MODEL,
+        api_key=settings.LLM_API_KEY,
+        temperature=settings.LLM_TEMPERATURE,
+        max_tokens=settings.LLM_MAX_TOKENS,
+        timeout=settings.LLM_TIMEOUT,
+    )
+
+    prompt = update_character_state_prompt.format(
+        chapter_text=chapter_text,
+        old_state=old_state,
+    )
+    logger.info("Updating character state ...")
+    new_state = await _invoke_with_retry(adapter, prompt)
+    if not new_state:
+        raise RuntimeError("update_character_state generation failed")
+    return new_state
+
+
 async def generate_chapter_draft(
     project: Project,
     chapter_num: int,
     architecture_text: str,
     directory_text: str,
+    character_state_text: str = "",
     previous_chapter_draft: str | None = None,
 ) -> str:
     """
@@ -298,6 +334,7 @@ async def generate_chapter_draft(
             excerpt = previous_chapter_draft[-500:]
         prompt = next_chapter_draft_prompt.format(
             novel_setting=architecture_text,
+            character_state=character_state_text,
             previous_chapter_excerpt=excerpt,
             chapter_number=chapter_num,
             chapter_title=current_chapter["chapter_title"],

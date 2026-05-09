@@ -55,3 +55,27 @@ export const updateChapter = async (chapterId: string, data: UpdateChapterReques
 export const deleteChapter = async (chapterId: string): Promise<void> => {
   await apiClient.delete(`/api/chapters/${chapterId}`)
 }
+
+export const exportChapters = async (
+  projectId: string,
+  format: 'md' | 'json' = 'md'
+): Promise<Blob> => {
+  const response = await apiClient.get(`/api/projects/${projectId}/chapters/export`, {
+    params: { format },
+    responseType: 'blob',
+  })
+  return response.data
+}
+
+export const exportChaptersBatch = async (
+  chapterIds: string[],
+  format: 'md' | 'json' = 'md'
+): Promise<Blob> => {
+  const response = await apiClient.post(`/api/chapters/export/batch`, {
+    chapter_ids: chapterIds,
+  }, {
+    params: { format },
+    responseType: 'blob',
+  })
+  return response.data
+}

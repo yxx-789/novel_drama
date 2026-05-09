@@ -12,8 +12,10 @@ from app.services.project_service import get_project_by_id
 from app.services.task_service import (
     create_task,
     run_architecture_task,
+    run_batch_chapters_task,
     run_chapter_task,
     run_directory_task,
+    run_drama_batch_task,
     run_drama_episode_task,
     run_drama_plan_task,
 )
@@ -68,6 +70,22 @@ async def trigger_chapter_generation(
     return task
 
 
+@router.post("/projects/{project_id}/generate/chapters/batch", response_model=TaskOut)
+async def trigger_batch_chapters_generation(
+    project_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    project = await get_project_by_id(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在或无权限访问")
+    task = await create_task(
+        db, project_id, "batch_chapters", params={"project_id": str(project_id)}
+    )
+    asyncio.create_task(run_batch_chapters_task(task.id))
+    return task
+
+
 @router.post("/projects/{project_id}/generate/drama-plan", response_model=TaskOut)
 async def trigger_drama_plan_generation(
     project_id: uuid.UUID,
@@ -88,6 +106,27 @@ async def trigger_drama_plan_generation(
 async def trigger_drama_episode_generation(
     project_id: uuid.UUID,
     episode_num: int,
+    payload: dict = {},
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    project = await get_project_by_id(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在或无权限访问")
+    params = {"project_id": str(project_id), "episode_num": episode_num}
+    chapter_nums = payload.get("chapter_nums")
+    if chapter_nums:
+        params["chapter_nums"] = chapter_nums
+    task = await create_task(
+        db, project_id, "drama_episode", params=params
+    )
+    asyncio.create_task(run_drama_episode_task(task.id))
+    return task
+
+
+@router.post("/projects/{project_id}/generate/drama-batch", response_model=TaskOut)
+async def trigger_drama_batch_generation(
+    project_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -95,7 +134,7 @@ async def trigger_drama_episode_generation(
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在或无权限访问")
     task = await create_task(
-        db, project_id, "drama_episode", params={"project_id": str(project_id), "episode_num": episode_num}
+        db, project_id, "drama_batch", params={"project_id": str(project_id)}
     )
-    asyncio.create_task(run_drama_episode_task(task.id))
+    asyncio.create_task(run_drama_batch_task(task.id))
     return task

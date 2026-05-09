@@ -170,7 +170,7 @@ Authorization: Bearer <token>
 | POST | /projects/{id}/generate/directory | 生成目录（真实 LLM） | 已实现 |
 | POST | /projects/{id}/generate/chapter/{num} | 生成章节（真实 LLM） | 已实现 |
 | POST | /projects/{id}/generate/drama-plan | 生成短剧改编计划（任务桩） | 已实现 |
-| POST | /projects/{id}/generate/drama-episode/{num} | 生成短剧单集脚本（任务桩） | 已实现 |
+| POST | /projects/{id}/generate/drama-episode/{num} | 生成短剧单集脚本（支持 chapter_nums 选择） | 已实现 |
 | POST | /projects/{id}/finalize/chapter/{num} | 定稿章节 | 待实现 |
 | POST | /projects/{id}/generate/batch | 批量生成 | 待实现 |
 
@@ -297,7 +297,9 @@ Authorization: Bearer <token>
 | POST | /projects/{id}/generate/drama-episode/{num} | 生成单集脚本（任务桩） | 已实现 |
 | GET | /projects/{id}/drama-episodes | 短剧集列表 | 已实现 |
 | GET | /drama/episodes/{ep_id}/script | 分镜脚本 | 待实现 |
-| GET | /drama/episodes/{ep_id}/export | 导出脚本 | 待实现 |
+| GET | /drama/episodes/{ep_id}/export?format=json\|md\|csv | 导出单集脚本 | 已实现 |
+| POST | /drama/episodes/export/batch | 批量导出选中剧集脚本 | 已实现 |
+| POST | /api/chapters/export/batch | 批量导出选中章节 | 已实现 |
 
 ### 任务
 

@@ -6,11 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infra.database import AsyncSessionLocal
 from app.models.project import Project, ProjectAsset, Task
+from app.services.drama_service import generate_drama_outline, generate_drama_script
 from app.services.generation_service import (
     generate_architecture,
     generate_chapter_draft,
     generate_directory,
     parse_chapter_blueprint,
+    update_character_state,
 )
 from app.services.project_service import get_project_by_id
 
@@ -146,7 +148,7 @@ async def _get_asset_text(db: AsyncSession, project_id: str, asset_type: str) ->
 
 
 async def _ensure_chapters(db: AsyncSession, project_id: str, parsed_chapters: list[dict]) -> None:
-    """根据解析的目录，初始化 chapters 表记录（如果不存在）"""
+    """根据解析的目录，初始化或更新 chapters 表记录"""
     from app.models.project import Chapter
     for ch in parsed_chapters:
         num = ch["chapter_number"]
@@ -166,6 +168,12 @@ async def _ensure_chapters(db: AsyncSession, project_id: str, parsed_chapters: l
                 status="draft",
             )
             db.add(chapter)
+        else:
+            # 更新已有记录的标题和摘要
+            if ch["chapter_title"]:
+                existing.title = ch["chapter_title"]
+            if ch["chapter_summary"]:
+                existing.outline = ch["chapter_summary"]
     await db.commit()
 
 
@@ -244,6 +252,8 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
             if not directory_text:
                 raise RuntimeError("Directory not found. Please generate directory first.")
 
+            character_state_text = await _get_asset_text(db, str(task.project_id), "characters") or ""
+
             await update_task_status(db, task_id, "running", progress=30)
 
             previous_draft = None
@@ -265,10 +275,24 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                 chapter_num=chapter_num,
                 architecture_text=architecture_text,
                 directory_text=directory_text,
+                character_state_text=character_state_text,
                 previous_chapter_draft=previous_draft,
             )
 
-            await update_task_status(db, task_id, "running", progress=80)
+            await update_task_status(db, task_id, "running", progress=70)
+
+            # 更新角色状态
+            if character_state_text:
+                try:
+                    new_state = await update_character_state(
+                        chapter_text=draft_text,
+                        old_state=character_state_text,
+                    )
+                    await _save_asset(db, str(task.project_id), "characters", new_state)
+                except Exception as e:
+                    logger.warning(f"Character state update failed for chapter {chapter_num}: {e}")
+
+            await update_task_status(db, task_id, "running", progress=85)
 
             from app.models.project import Chapter
             result = await db.execute(
@@ -339,10 +363,110 @@ async def _ensure_drama_episodes(db: AsyncSession, project_id: str, episodes: li
     await db.commit()
 
 
-async def run_drama_plan_task(task_id: uuid.UUID) -> None:
-    """后台执行短剧改编计划生成任务（桩）"""
-    import asyncio
+async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
+    """后台执行批量章节正文生成任务（串行逐章生成）"""
+    async with AsyncSessionLocal() as db:
+        try:
+            task = await get_task_by_id(db, task_id)
+            if not task:
+                logger.error(f"Task {task_id} not found")
+                return
 
+            await update_task_status(db, task_id, "running", progress=5)
+
+            project = await get_project_by_id(db, uuid.UUID(str(task.project_id)))
+            if not project:
+                raise RuntimeError("Project not found")
+
+            architecture_text = await _get_asset_text(db, str(task.project_id), "architecture")
+            if not architecture_text:
+                raise RuntimeError("Architecture not found. Please generate architecture first.")
+
+            directory_text = await _get_asset_text(db, str(task.project_id), "directory")
+            if not directory_text:
+                raise RuntimeError("Directory not found. Please generate directory first.")
+
+            character_state_text = await _get_asset_text(db, str(task.project_id), "characters") or ""
+
+            # 获取所有需要生成的章节
+            from app.models.project import Chapter
+            result = await db.execute(
+                select(Chapter).where(
+                    Chapter.project_id == str(task.project_id),
+                ).order_by(Chapter.chapter_num)
+            )
+            chapter_list = list(result.scalars().all())
+            total = len(chapter_list)
+            if total == 0:
+                raise RuntimeError("No chapters found. Please generate directory first.")
+
+            await update_task_status(db, task_id, "running", progress=10)
+
+            generated_count = 0
+            for idx, chapter in enumerate(chapter_list):
+                chapter_num = chapter.chapter_num
+                logger.info(f"Batch task {task_id}: generating chapter {chapter_num} ({idx + 1}/{total}) ...")
+
+                previous_draft = None
+                if chapter_num > 1:
+                    result = await db.execute(
+                        select(Chapter).where(
+                            Chapter.project_id == str(task.project_id),
+                            Chapter.chapter_num == chapter_num - 1,
+                        )
+                    )
+                    prev_chapter = result.scalar_one_or_none()
+                    if prev_chapter:
+                        previous_draft = prev_chapter.draft
+
+                draft_text = await generate_chapter_draft(
+                    project,
+                    chapter_num=chapter_num,
+                    architecture_text=architecture_text,
+                    directory_text=directory_text,
+                    character_state_text=character_state_text,
+                    previous_chapter_draft=previous_draft,
+                )
+
+                chapter.draft = draft_text
+                chapter.status = "draft_generated"
+
+                # 更新角色状态
+                if character_state_text:
+                    try:
+                        new_state = await update_character_state(
+                            chapter_text=draft_text,
+                            old_state=character_state_text,
+                        )
+                        character_state_text = new_state
+                        await _save_asset(db, str(task.project_id), "characters", new_state)
+                    except Exception as e:
+                        logger.warning(f"Character state update failed for chapter {chapter_num}: {e}")
+
+                await db.commit()
+
+                generated_count += 1
+                progress = 10 + int((generated_count / total) * 85)
+                await update_task_status(
+                    db, task_id, "running", progress=progress,
+                    result={"current_chapter": chapter_num, "completed": generated_count, "total": total}
+                )
+
+            await update_task_status(
+                db, task_id, "success", progress=100,
+                result={"total": total, "generated": generated_count}
+            )
+            logger.info(f"Batch chapters task {task_id} completed: {generated_count}/{total}")
+        except Exception as e:
+            logger.exception(f"Batch chapters task {task_id} failed: {e}")
+            try:
+                await update_task_status(db, task_id, "failed", error_msg=str(e))
+            except Exception:
+                pass
+
+
+async def run_drama_plan_task(task_id: uuid.UUID) -> None:
+    """后台执行短剧改编计划生成任务"""
     async with AsyncSessionLocal() as db:
         try:
             task = await get_task_by_id(db, task_id)
@@ -356,22 +480,75 @@ async def run_drama_plan_task(task_id: uuid.UUID) -> None:
             if not project:
                 raise RuntimeError("Project not found")
 
-            await update_task_status(db, task_id, "running", progress=30)
+            # 读取章节正文和角色设定
+            from app.models.project import Chapter
+            result = await db.execute(
+                select(Chapter).where(
+                    Chapter.project_id == str(task.project_id),
+                ).order_by(Chapter.chapter_num)
+            )
+            chapters = list(result.scalars().all())
+            if not chapters:
+                raise RuntimeError("No chapters found. Please generate chapters first.")
 
-            # Stub: 模拟章节到剧集的分组（每 3 章一集）
-            num_chapters = project.num_chapters or 10
+            characters_text = await _get_asset_text(db, str(task.project_id), "characters") or ""
+
+            await update_task_status(db, task_id, "running", progress=25)
+
+            # 按每 3 章一集分组并生成真实大纲
             chapters_per_episode = 3
             episodes = []
-            for i in range(1, num_chapters + 1, chapters_per_episode):
-                end = min(i + chapters_per_episode - 1, num_chapters)
+            total = len(chapters)
+            for i in range(0, total, chapters_per_episode):
+                batch = chapters[i:i + chapters_per_episode]
+                start_num = batch[0].chapter_num
+                end_num = batch[-1].chapter_num
+                episode_num = i // chapters_per_episode + 1
+                chapters_range = f"第{start_num}-{end_num}章" if start_num != end_num else f"第{start_num}章"
+
+                # 合并章节文本
+                chapter_texts = "\n\n".join(
+                    f"=== 第{ch.chapter_num}章 ===\n{ch.draft or ''}" for ch in batch
+                )
+
+                await update_task_status(
+                    db, task_id, "running",
+                    progress=25 + int((i / total) * 60),
+                    result={"current_episode": episode_num, "total_episodes": (total + 2) // 3}
+                )
+
+                outline = await generate_drama_outline(
+                    chapter_texts=chapter_texts,
+                    characters_text=characters_text,
+                    episode_num=episode_num,
+                    chapters_range=chapters_range,
+                )
+
                 episodes.append({
-                    "episode_num": (i - 1) // chapters_per_episode + 1,
-                    "title": f"第{(i - 1) // chapters_per_episode + 1}集",
-                    "source_chapters": f"第{i}-{end}章" if i != end else f"第{i}章",
+                    "episode_num": episode_num,
+                    "title": outline.get("title", f"第{episode_num}集"),
+                    "source_chapters": chapters_range,
+                    "outline_json": outline,
                 })
 
-            await update_task_status(db, task_id, "running", progress=60)
+            await update_task_status(db, task_id, "running", progress=90)
             await _ensure_drama_episodes(db, str(task.project_id), episodes)
+
+            # 保存 outline_json
+            from app.models.project import DramaEpisode
+            for ep in episodes:
+                result = await db.execute(
+                    select(DramaEpisode).where(
+                        DramaEpisode.project_id == str(task.project_id),
+                        DramaEpisode.episode_num == ep["episode_num"],
+                    )
+                )
+                episode = result.scalar_one_or_none()
+                if episode:
+                    episode.outline_json = ep["outline_json"]
+                    episode.title = ep["title"]
+                    episode.source_chapters = ep["source_chapters"]
+            await db.commit()
 
             await update_task_status(
                 db,
@@ -390,9 +567,7 @@ async def run_drama_plan_task(task_id: uuid.UUID) -> None:
 
 
 async def run_drama_episode_task(task_id: uuid.UUID) -> None:
-    """后台执行单集短剧脚本生成任务（桩）"""
-    import asyncio
-
+    """后台执行单集短剧脚本生成任务"""
     async with AsyncSessionLocal() as db:
         try:
             task = await get_task_by_id(db, task_id)
@@ -406,9 +581,6 @@ async def run_drama_episode_task(task_id: uuid.UUID) -> None:
             if task.params and isinstance(task.params, dict):
                 episode_num = task.params.get("episode_num", 1)
 
-            await update_task_status(db, task_id, "running", progress=50)
-
-            # Stub: 创建占位脚本数据
             from app.models.project import DramaEpisode
             result = await db.execute(
                 select(DramaEpisode).where(
@@ -417,31 +589,86 @@ async def run_drama_episode_task(task_id: uuid.UUID) -> None:
                 )
             )
             episode = result.scalar_one_or_none()
-            if episode:
-                episode.outline_json = {
-                    "hook": {"first_3s": {"visual": "占位：开局钩子画面", "action": "主角登场"}},
-                    "story_beats": [{"beat_num": 1, "type": "setup", "content": "占位剧情"}],
-                    "cliffhanger": {"last_5s": {"visual": "占位：悬念画面"}},
-                }
-                episode.script_json = {
-                    "scenes": [
-                        {
-                            "scene_num": 1,
-                            "location": "占位场景",
-                            "shots": [
-                                {
-                                    "shot_num": 1,
-                                    "type": "特写",
-                                    "duration": "3秒",
-                                    "visual": "占位画面描述",
-                                    "dialogue": {"speaker": "主角", "content": "占位台词"},
-                                }
-                            ],
-                        }
-                    ],
-                }
-                episode.status = "generated"
-                await db.commit()
+            if not episode:
+                raise RuntimeError(f"Episode {episode_num} not found")
+
+            if not episode.outline_json:
+                raise RuntimeError(f"Episode {episode_num} has no outline. Please run drama plan first.")
+
+            # 读取对应范围的章节文本
+            from app.models.project import Chapter
+            result = await db.execute(
+                select(Chapter).where(
+                    Chapter.project_id == str(task.project_id),
+                ).order_by(Chapter.chapter_num)
+            )
+            chapters = list(result.scalars().all())
+
+            # 优先使用用户指定的 chapter_nums，否则按 source_chapters 自动匹配
+            chapter_nums = None
+            if task.params and isinstance(task.params, dict):
+                chapter_nums = task.params.get("chapter_nums")
+
+            chapter_texts = ""
+            if chapter_nums:
+                selected = [ch for ch in chapters if ch.chapter_num in chapter_nums]
+                selected.sort(key=lambda c: c.chapter_num)
+                chapter_texts = "\n\n".join(
+                    f"=== 第{ch.chapter_num}章 ===\n{ch.draft or ''}" for ch in selected
+                )
+            else:
+                # 解析 source_chapters 范围，例如 "第1-3章"
+                source = episode.source_chapters or ""
+                if source:
+                    import re
+                    range_match = re.search(r"第(\d+)-(\d+)章", source)
+                    if range_match:
+                        start, end = int(range_match.group(1)), int(range_match.group(2))
+                        selected = [ch for ch in chapters if start <= ch.chapter_num <= end]
+                    else:
+                        single_match = re.search(r"第(\d+)章", source)
+                        if single_match:
+                            num = int(single_match.group(1))
+                            selected = [ch for ch in chapters if ch.chapter_num == num]
+                        else:
+                            selected = chapters
+                    chapter_texts = "\n\n".join(
+                        f"=== 第{ch.chapter_num}章 ===\n{ch.draft or ''}" for ch in selected
+                    )
+                else:
+                    chapter_texts = "\n\n".join(
+                        f"=== 第{ch.chapter_num}章 ===\n{ch.draft or ''}" for ch in chapters
+                    )
+
+            characters_text = await _get_asset_text(db, str(task.project_id), "characters") or ""
+
+            # 记忆机制：查询前 N-1 集已生成的脚本作为上下文
+            context_scripts = []
+            if episode_num > 1:
+                prev_result = await db.execute(
+                    select(DramaEpisode).where(
+                        DramaEpisode.project_id == str(task.project_id),
+                        DramaEpisode.episode_num < episode_num,
+                        DramaEpisode.script_json.isnot(None),
+                    ).order_by(DramaEpisode.episode_num)
+                )
+                for prev_ep in prev_result.scalars().all():
+                    context_scripts.append(prev_ep.script_json)
+
+            await update_task_status(db, task_id, "running", progress=40)
+
+            script = await generate_drama_script(
+                outline=episode.outline_json,
+                chapter_texts=chapter_texts,
+                characters_text=characters_text,
+                context_scripts=context_scripts,
+            )
+
+            await update_task_status(db, task_id, "running", progress=80)
+
+            episode.script_json = script
+            episode.status = "generated"
+            await db.commit()
 
             await update_task_status(
                 db,
@@ -453,6 +680,120 @@ async def run_drama_episode_task(task_id: uuid.UUID) -> None:
             logger.info(f"Drama episode task {task_id} completed successfully")
         except Exception as e:
             logger.exception(f"Drama episode task {task_id} failed: {e}")
+            try:
+                await update_task_status(db, task_id, "failed", error_msg=str(e))
+            except Exception:
+                pass
+
+
+async def run_drama_batch_task(task_id: uuid.UUID) -> None:
+    """后台执行批量短剧脚本生成任务（串行逐集生成）"""
+    async with AsyncSessionLocal() as db:
+        try:
+            task = await get_task_by_id(db, task_id)
+            if not task:
+                logger.error(f"Task {task_id} not found")
+                return
+
+            await update_task_status(db, task_id, "running", progress=5)
+
+            project = await get_project_by_id(db, uuid.UUID(str(task.project_id)))
+            if not project:
+                raise RuntimeError("Project not found")
+
+            from app.models.project import DramaEpisode, Chapter
+            result = await db.execute(
+                select(DramaEpisode).where(
+                    DramaEpisode.project_id == str(task.project_id),
+                ).order_by(DramaEpisode.episode_num)
+            )
+            episodes = list(result.scalars().all())
+            total = len(episodes)
+            if total == 0:
+                raise RuntimeError("No drama episodes found. Please run drama plan first.")
+
+            # 预加载全部章节
+            result = await db.execute(
+                select(Chapter).where(
+                    Chapter.project_id == str(task.project_id),
+                ).order_by(Chapter.chapter_num)
+            )
+            chapters = list(result.scalars().all())
+            characters_text = await _get_asset_text(db, str(task.project_id), "characters") or ""
+
+            await update_task_status(db, task_id, "running", progress=10)
+
+            generated_count = 0
+            for idx, episode in enumerate(episodes):
+                episode_num = episode.episode_num
+                logger.info(f"Drama batch task {task_id}: generating episode {episode_num} ({idx + 1}/{total}) ...")
+
+                if not episode.outline_json:
+                    logger.warning(f"Episode {episode_num} has no outline, skipping")
+                    continue
+
+                # 解析 source_chapters 范围
+                source = episode.source_chapters or ""
+                chapter_texts = ""
+                if source:
+                    import re
+                    range_match = re.search(r"第(\d+)-(\d+)章", source)
+                    if range_match:
+                        start, end = int(range_match.group(1)), int(range_match.group(2))
+                        selected = [ch for ch in chapters if start <= ch.chapter_num <= end]
+                    else:
+                        single_match = re.search(r"第(\d+)章", source)
+                        if single_match:
+                            num = int(single_match.group(1))
+                            selected = [ch for ch in chapters if ch.chapter_num == num]
+                        else:
+                            selected = chapters
+                    chapter_texts = "\n\n".join(
+                        f"=== 第{ch.chapter_num}章 ===\n{ch.draft or ''}" for ch in selected
+                    )
+                else:
+                    chapter_texts = "\n\n".join(
+                        f"=== 第{ch.chapter_num}章 ===\n{ch.draft or ''}" for ch in chapters
+                    )
+
+                # 记忆机制：查询前 N-1 集已生成的脚本作为上下文
+                context_scripts = []
+                if episode.episode_num > 1:
+                    prev_result = await db.execute(
+                        select(DramaEpisode).where(
+                            DramaEpisode.project_id == str(task.project_id),
+                            DramaEpisode.episode_num < episode.episode_num,
+                            DramaEpisode.script_json.isnot(None),
+                        ).order_by(DramaEpisode.episode_num)
+                    )
+                    for prev_ep in prev_result.scalars().all():
+                        context_scripts.append(prev_ep.script_json)
+
+                script = await generate_drama_script(
+                    outline=episode.outline_json,
+                    chapter_texts=chapter_texts,
+                    characters_text=characters_text,
+                    context_scripts=context_scripts,
+                )
+
+                episode.script_json = script
+                episode.status = "generated"
+                await db.commit()
+
+                generated_count += 1
+                progress = 10 + int((generated_count / total) * 85)
+                await update_task_status(
+                    db, task_id, "running", progress=progress,
+                    result={"current_episode": episode_num, "completed": generated_count, "total": total}
+                )
+
+            await update_task_status(
+                db, task_id, "success", progress=100,
+                result={"total": total, "generated": generated_count}
+            )
+            logger.info(f"Drama batch task {task_id} completed: {generated_count}/{total}")
+        except Exception as e:
+            logger.exception(f"Drama batch task {task_id} failed: {e}")
             try:
                 await update_task_status(db, task_id, "failed", error_msg=str(e))
             except Exception:

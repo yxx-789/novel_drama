@@ -2,6 +2,27 @@
 
 ## [未发布]
 
+### 新增
+
+- 短剧脚本导出功能：支持 JSON / Markdown / CSV 三种格式下载
+  - 后端：`backend/app/services/drama/exporter.py` 纯内存格式化服务（复用旧项目核心逻辑）
+  - 后端：`GET /api/drama/episodes/{ep_id}/export?format=json|md|csv` 同步下载接口
+  - 前端：`frontend/src/api/drama.ts` 新增 `exportEpisodeScript()`
+  - 前端：`ProjectDetail.tsx` 短剧 Tab 新增导出按钮（JSON / MD / CSV）
+
+- 导出选择与批量导出：章节和剧集均支持复选框多选 + 批量导出
+  - 后端：`POST /api/chapters/export/batch` 批量导出选中章节（md/json）
+  - 后端：`POST /api/drama/episodes/export/batch` 批量导出选中剧集脚本（md/json）
+  - 前端：章节 Tab 新增全选/导出选中按钮
+  - 前端：短剧 Tab 新增全选/导出选中（MD/JSON）按钮
+
+- 脚本生成章节选择 + 续集记忆机制
+  - 后端：`POST /projects/{id}/generate/drama-episode/{num}` 支持 `chapter_nums` 参数，指定基于哪些章节生成
+  - 后端：`drama_service.py` 新增 `_build_context_summary()`，提取前 3 集关键道具和结尾台词注入 prompt
+  - 后端：`task_service.py` `run_drama_episode_task()` / `run_drama_batch_task()` 自动查询前集脚本作为上下文
+  - 前端：点击"生成脚本"时弹出章节选择器模态框，支持全选/按默认选择/自定义勾选
+  - 前端：章节选择器采用 glass-panel 风格，与现有 UI 一致
+
 ### 文档
 
 - 新增 `AGENTS.md` —— 项目协作规范与开发约束
@@ -145,3 +166,26 @@
 - 前端任务状态轮询机制：`pollTask` 辅助函数，每 3 秒查询 `getTask`，任务完成/失败后自动停止并刷新数据
 - 架构/目录生成也接入轮询，替代 `alert`，任务完成后自动刷新对应 Tab 数据
 - 前端编译通过
+
+### 角色状态追踪（随章节生成自动更新）
+
+- 新增 `backend/app/generator/prompts.py` —— `update_character_state_prompt`：复用 AI_NovelGenerator `memory_prompts.py` 核心 prompt
+- 修改 `backend/app/generator/prompts.py` —— `next_chapter_draft_prompt` 注入 `{character_state}` 占位符
+- 新增 `backend/app/services/generation_service.py` —— `update_character_state()`：读取旧状态 + 新章节正文 → LLM 更新角色状态文档
+- 修改 `backend/app/services/generation_service.py` —— `generate_chapter_draft()` 新增 `character_state_text` 参数
+- 修改 `backend/app/services/task_service.py` —— `run_chapter_task()` / `run_batch_chapters_task()`：生成前读取 `characters` asset，生成后调用 `update_character_state()` 写入最新状态
+- 前端架构 Tab 同步加载并展示 `characters` asset 内容（只读）
+- 后端 import / py_compile / 服务启动验证通过
+- 实测：角色状态从 3657 字符更新为 4554 字符，物品/能力/状态均按剧情正确演化
+
+### 短剧改编 API（复用 novel_to_drama 真实 LLM）
+
+- 新建 `backend/app/services/drama_service.py` —— 复用 `novel_to_drama` 核心 prompt 逻辑：
+  - `generate_drama_outline()`：章节文本 + 角色设定 → LLM → JSON 大纲（hook / story_beats / cliffhanger / key_items）
+  - `generate_drama_script()`：大纲 + 原始小说 → LLM → JSON 分镜头剧本（scenes / shots / dialogue / camera_movement / audio）
+- 替换 `backend/app/services/task_service.py` —— `run_drama_plan_task()` stub → 真实 LLM：按每 3 章一集分组，逐集生成 outline_json 并保存
+- 替换 `backend/app/services/task_service.py` —— `run_drama_episode_task()` stub → 真实 LLM：读取 episode outline + 对应章节正文 → 生成分镜头 script_json
+- 增强 `drama_service._parse_llm_json()`：去掉 "json" 前缀、修复截断括号（补全缺失的 `}` 和 `]`）
+- drama script 生成使用 12000 max_tokens（避免 4096 token 截断）
+- 后端 import / py_compile / 服务启动验证通过
+- 实测：3 章小说生成 10 场景 / 29 镜头的完整分镜脚本，关键道具和逻辑链条全部保留

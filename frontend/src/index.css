@@ -2,6 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-gray-50 text-gray-900;
+@layer base {
+  body {
+    font-family: 'Inter', 'Noto Serif SC', serif;
+    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+    min-height: 100vh;
+    color: #334155;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    border-radius: 2rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  }
+
+  .btn-pill {
+    @apply px-6 py-3 rounded-[2rem] text-sm font-medium tracking-widest transition-all duration-300;
+  }
+
+  .btn-primary {
+    @apply btn-pill bg-slate-700 text-white hover:bg-slate-800 shadow-lg hover:shadow-xl hover:-translate-y-0.5;
+  }
+
+  .btn-secondary {
+    @apply btn-pill bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:border-slate-300;
+  }
+
+  .btn-ghost {
+    @apply text-xs font-bold tracking-widest text-slate-400 hover:text-slate-600 transition-colors uppercase;
+  }
+
+  .input-glass {
+    @apply w-full bg-white/80 border border-white/80 rounded-xl py-3 px-4 text-sm text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:bg-white transition-all;
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:bg-white/80;
+  }
 }

@@ -29,14 +29,12 @@ async def create_project(
 async def get_project_by_id(
     db: AsyncSession,
     project_id: uuid.UUID,
-    owner_id: uuid.UUID,
+    owner_id: uuid.UUID | None = None,
 ) -> Project | None:
-    result = await db.execute(
-        select(Project).where(
-            Project.id == project_id,
-            Project.owner_id == str(owner_id),
-        )
-    )
+    filters = [Project.id == project_id]
+    if owner_id is not None:
+        filters.append(Project.owner_id == str(owner_id))
+    result = await db.execute(select(Project).where(*filters))
     return result.scalar_one_or_none()
 
 
@@ -66,5 +64,13 @@ async def update_project(
 
 
 async def delete_project(db: AsyncSession, project: Project) -> None:
+    # 先删除关联的 tasks、drama_episodes（没有级联关系，需手动清理）
+    from app.models.project import Task, DramaEpisode
+    await db.execute(
+        Task.__table__.delete().where(Task.project_id == str(project.id))
+    )
+    await db.execute(
+        DramaEpisode.__table__.delete().where(DramaEpisode.project_id == str(project.id))
+    )
     await db.delete(project)
     await db.commit()

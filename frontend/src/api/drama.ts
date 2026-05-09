@@ -17,3 +17,27 @@ export const listDramaEpisodes = async (projectId: string): Promise<DramaEpisode
   const response = await apiClient.get<DramaEpisode[]>(`/api/projects/${projectId}/drama-episodes`)
   return response.data
 }
+
+export const exportEpisodeScript = async (
+  episodeId: string,
+  format: 'json' | 'md' | 'csv'
+): Promise<Blob> => {
+  const response = await apiClient.get(`/api/drama/episodes/${episodeId}/export`, {
+    params: { format },
+    responseType: 'blob',
+  })
+  return response.data
+}
+
+export const exportEpisodesBatch = async (
+  episodeIds: string[],
+  format: 'json' | 'md' | 'csv'
+): Promise<Blob> => {
+  const response = await apiClient.post(`/api/drama/episodes/export/batch`, {
+    episode_ids: episodeIds,
+  }, {
+    params: { format },
+    responseType: 'blob',
+  })
+  return response.data
+}

@@ -17,9 +17,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 安装运行时依赖
+# 安装运行时依赖 + supervisor（同时管理 FastAPI 和 Celery Worker）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
+    supervisor \
     && rm -rf /var/lib/apt/lists/*
 
 # 从构建阶段复制已安装的依赖
@@ -36,5 +37,8 @@ COPY . .
 # 暴露端口（Railway 使用 PORT 环境变量）
 EXPOSE 8000
 
-# 生产环境启动命令
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 复制 supervisor 配置
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# 生产环境：先执行数据库迁移，然后启动 supervisor（同时管理 FastAPI + Celery Worker）
+CMD bash -c "alembic upgrade head && /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf"

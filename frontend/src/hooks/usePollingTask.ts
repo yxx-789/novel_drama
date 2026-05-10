@@ -48,8 +48,14 @@ export function usePollingTask(taskId: string | null, options: UsePollingTaskOpt
             setError(msg)
             onError?.(msg)
           }
-        } catch {
-          // ignore polling errors
+        } catch (err: any) {
+          if (err.response?.status === 404) {
+            stopPolling()
+            setError('任务不存在或已被删除')
+            onError?.('任务不存在或已被删除')
+            return
+          }
+          // ignore other polling errors
         }
       }, interval)
     },

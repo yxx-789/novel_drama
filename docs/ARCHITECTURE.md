@@ -126,17 +126,18 @@ MVP 阶段取消与重试通过 API 触发：
 - `POST /tasks/{id}/cancel`：将 pending 任务标记为 cancelled
 - `POST /tasks/{id}/retry`：将 failed 任务重新入队
 
-### 3.4 队列选型（待决策）
+### 3.4 队列选型
 
-候选：RQ、Dramatiq、Celery
+**已选择：Celery + Redis**
 
-评估维度：
-- 与 FastAPI 的集成便利度
-- 与 Redis 的依赖兼容性
-- 任务监控与失败重试机制
-- 社区活跃度
+- Redis 已在基础设施中运行，复用为 Celery broker 和结果后端
+- Celery 生态最成熟，支持任务重试、超时控制、监控（Flower）
+- Worker 通过 `celery -A app.worker.tasks worker` 启动，与 FastAPI 进程分离
 
-当前状态：MVP 阶段先用 RQ 或 Dramatiq（轻量），后续如需复杂工作流再评估 Celery。
+任务触发方式：
+- Router 调用 `celery_task.delay(task_id)` 将任务推入 Redis 队列
+- Celery Worker 从队列消费，通过 `asyncio.run()` 执行原有的 async 业务逻辑
+- 崩溃恢复：`lifespan` 启动时扫描 `status='running'` 且超时（>30min）的任务，标记为 `failed`
 
 ---
 

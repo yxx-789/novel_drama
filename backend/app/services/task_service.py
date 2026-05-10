@@ -1,3 +1,4 @@
+import json
 import logging
 import uuid
 
@@ -8,13 +9,18 @@ from app.infra.database import AsyncSessionLocal
 from app.models.project import Project, ProjectAsset, Task
 from app.services.drama_service import generate_drama_outline, generate_drama_script
 from app.services.generation_service import (
+    build_state_summary,
     check_chapter_consistency,
+    extract_world_state_delta,
     generate_architecture,
     generate_chapter_draft,
     generate_directory,
+    merge_world_state,
     parse_chapter_blueprint,
     update_character_state,
 )
+from app.generator.world_state_templates import get_template
+from app.services.llm_config_service import resolve_llm_config
 from app.services.project_service import get_project_by_id
 
 logger = logging.getLogger(__name__)
@@ -108,13 +114,15 @@ async def run_architecture_task(task_id: uuid.UUID) -> None:
             if not project:
                 raise RuntimeError("Project not found")
 
+            llm_config = await resolve_llm_config(str(project.owner_id), db)
+
             user_guidance = ""
             if task.params and isinstance(task.params, dict):
                 user_guidance = task.params.get("user_guidance", "")
 
             await update_task_status(db, task_id, "running", progress=30)
             architecture_text, character_state_text = await generate_architecture(
-                project, user_guidance=user_guidance
+                project, user_guidance=user_guidance, llm_config=llm_config
             )
 
             await update_task_status(db, task_id, "running", progress=70)
@@ -193,6 +201,8 @@ async def run_directory_task(task_id: uuid.UUID) -> None:
             if not project:
                 raise RuntimeError("Project not found")
 
+            llm_config = await resolve_llm_config(str(project.owner_id), db)
+
             architecture_text = await _get_asset_text(db, str(task.project_id), "architecture")
             if not architecture_text:
                 raise RuntimeError("Architecture not found. Please generate architecture first.")
@@ -203,7 +213,7 @@ async def run_directory_task(task_id: uuid.UUID) -> None:
 
             await update_task_status(db, task_id, "running", progress=40)
             directory_text, parsed_chapters = await generate_directory(
-                project, architecture_text=architecture_text, user_guidance=user_guidance
+                project, architecture_text=architecture_text, user_guidance=user_guidance, llm_config=llm_config
             )
 
             await update_task_status(db, task_id, "running", progress=70)
@@ -241,6 +251,8 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
             if not project:
                 raise RuntimeError("Project not found")
 
+            llm_config = await resolve_llm_config(str(project.owner_id), db)
+
             chapter_num = 1
             if task.params and isinstance(task.params, dict):
                 chapter_num = task.params.get("chapter_num", 1)
@@ -254,6 +266,16 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                 raise RuntimeError("Directory not found. Please generate directory first.")
 
             character_state_text = await _get_asset_text(db, str(task.project_id), "characters") or ""
+
+            # 读取 world_state
+            world_state_raw = await _get_asset_text(db, str(task.project_id), "world_state")
+            world_state: dict = {}
+            if world_state_raw:
+                try:
+                    world_state = json.loads(world_state_raw)
+                except Exception:
+                    world_state = {}
+            template = get_template(project.genre or "")
 
             await update_task_status(db, task_id, "running", progress=30)
 
@@ -272,6 +294,26 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                     previous_draft = prev_chapter.draft
                     previous_summary = prev_chapter.outline or ""
 
+            # 构建 world_state 摘要
+            world_state_summary = ""
+            if world_state:
+                try:
+                    current_chapter_info = None
+                    parsed = parse_chapter_blueprint(directory_text)
+                    for ch in parsed:
+                        if ch["chapter_number"] == chapter_num:
+                            current_chapter_info = ch
+                            break
+                    world_state_summary = await build_state_summary(
+                        world_state=world_state,
+                        target_chapter=chapter_num,
+                        chapter_title=current_chapter_info["chapter_title"] if current_chapter_info else "",
+                        chapter_summary=current_chapter_info["chapter_summary"] if current_chapter_info else "",
+                        llm_config=llm_config,
+                    )
+                except Exception as e:
+                    logger.warning(f"Build state summary failed for chapter {chapter_num}: {e}")
+
             await update_task_status(db, task_id, "running", progress=50)
             draft_text = await generate_chapter_draft(
                 project,
@@ -281,6 +323,8 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                 character_state_text=character_state_text,
                 previous_chapter_draft=previous_draft,
                 previous_chapter_summary=previous_summary,
+                world_state_summary=world_state_summary,
+                llm_config=llm_config,
             )
 
             await update_task_status(db, task_id, "running", progress=65)
@@ -292,6 +336,7 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                         chapter_text=draft_text,
                         character_state_text=character_state_text,
                         previous_chapter_draft=previous_draft,
+                        llm_config=llm_config,
                     )
                     if "INCONSISTENT" in check_result.upper():
                         logger.warning(f"Chapter {chapter_num} consistency issues detected:\n{check_result}")
@@ -308,10 +353,30 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                     new_state = await update_character_state(
                         chapter_text=draft_text,
                         old_state=character_state_text,
+                        llm_config=llm_config,
                     )
                     await _save_asset(db, str(task.project_id), "characters", new_state)
                 except Exception as e:
                     logger.warning(f"Character state update failed for chapter {chapter_num}: {e}")
+
+            # 提取并更新 world_state（非阻塞）
+            try:
+                delta = await extract_world_state_delta(
+                    chapter_text=draft_text,
+                    chapter_number=chapter_num,
+                    current_state=world_state,
+                    template=template,
+                    llm_config=llm_config,
+                )
+                if not delta.get("no_changes"):
+                    world_state = merge_world_state(world_state, delta)
+                    await _save_asset(
+                        db, str(task.project_id), "world_state",
+                        json.dumps(world_state, ensure_ascii=False, indent=2)
+                    )
+                    logger.info(f"World state updated for chapter {chapter_num}")
+            except Exception as e:
+                logger.warning(f"World state update failed for chapter {chapter_num}: {e}")
 
             await update_task_status(db, task_id, "running", progress=85)
 
@@ -399,6 +464,8 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
             if not project:
                 raise RuntimeError("Project not found")
 
+            llm_config = await resolve_llm_config(str(project.owner_id), db)
+
             architecture_text = await _get_asset_text(db, str(task.project_id), "architecture")
             if not architecture_text:
                 raise RuntimeError("Architecture not found. Please generate architecture first.")
@@ -408,6 +475,16 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                 raise RuntimeError("Directory not found. Please generate directory first.")
 
             character_state_text = await _get_asset_text(db, str(task.project_id), "characters") or ""
+
+            # 读取 world_state
+            world_state_raw = await _get_asset_text(db, str(task.project_id), "world_state")
+            world_state: dict = {}
+            if world_state_raw:
+                try:
+                    world_state = json.loads(world_state_raw)
+                except Exception:
+                    world_state = {}
+            template = get_template(project.genre or "")
 
             # 获取所有需要生成的章节
             from app.models.project import Chapter
@@ -424,78 +501,145 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
             await update_task_status(db, task_id, "running", progress=10)
 
             generated_count = 0
+            failed_chapters = []
             for idx, chapter in enumerate(chapter_list):
                 chapter_num = chapter.chapter_num
                 logger.info(f"Batch task {task_id}: generating chapter {chapter_num} ({idx + 1}/{total}) ...")
 
-                previous_draft = None
-                previous_summary = ""
-                if chapter_num > 1:
-                    result = await db.execute(
-                        select(Chapter).where(
-                            Chapter.project_id == str(task.project_id),
-                            Chapter.chapter_num == chapter_num - 1,
+                try:
+                    previous_draft = None
+                    previous_summary = ""
+                    if chapter_num > 1:
+                        result = await db.execute(
+                            select(Chapter).where(
+                                Chapter.project_id == str(task.project_id),
+                                Chapter.chapter_num == chapter_num - 1,
+                            )
                         )
+                        prev_chapter = result.scalar_one_or_none()
+                        if prev_chapter:
+                            previous_draft = prev_chapter.draft
+                            previous_summary = prev_chapter.outline or ""
+
+                    # 构建 world_state 摘要
+                    world_state_summary = ""
+                    if world_state:
+                        try:
+                            parsed = parse_chapter_blueprint(directory_text)
+                            current_chapter_info = None
+                            for ch in parsed:
+                                if ch["chapter_number"] == chapter_num:
+                                    current_chapter_info = ch
+                                    break
+                            world_state_summary = await build_state_summary(
+                                world_state=world_state,
+                                target_chapter=chapter_num,
+                                chapter_title=current_chapter_info["chapter_title"] if current_chapter_info else "",
+                                chapter_summary=current_chapter_info["chapter_summary"] if current_chapter_info else "",
+                                llm_config=llm_config,
+                            )
+                        except Exception as e:
+                            logger.warning(f"Batch build state summary failed for chapter {chapter_num}: {e}")
+
+                    draft_text = await generate_chapter_draft(
+                        project,
+                        chapter_num=chapter_num,
+                        architecture_text=architecture_text,
+                        directory_text=directory_text,
+                        character_state_text=character_state_text,
+                        previous_chapter_draft=previous_draft,
+                        previous_chapter_summary=previous_summary,
+                        world_state_summary=world_state_summary,
+                        llm_config=llm_config,
                     )
-                    prev_chapter = result.scalar_one_or_none()
-                    if prev_chapter:
-                        previous_draft = prev_chapter.draft
-                        previous_summary = prev_chapter.outline or ""
 
-                draft_text = await generate_chapter_draft(
-                    project,
-                    chapter_num=chapter_num,
-                    architecture_text=architecture_text,
-                    directory_text=directory_text,
-                    character_state_text=character_state_text,
-                    previous_chapter_draft=previous_draft,
-                    previous_chapter_summary=previous_summary,
-                )
+                    chapter.draft = draft_text
+                    chapter.status = "draft_generated"
 
-                chapter.draft = draft_text
-                chapter.status = "draft_generated"
+                    # 章节生成后一致性检查（非阻塞）
+                    if character_state_text:
+                        try:
+                            check_result = await check_chapter_consistency(
+                                chapter_text=draft_text,
+                                character_state_text=character_state_text,
+                                previous_chapter_draft=previous_draft,
+                                llm_config=llm_config,
+                            )
+                            if "INCONSISTENT" in check_result.upper():
+                                logger.warning(f"Batch chapter {chapter_num} consistency issues detected:\n{check_result}")
+                            else:
+                                logger.info(f"Batch chapter {chapter_num} consistency check passed.")
+                        except Exception as e:
+                            logger.warning(f"Batch chapter consistency check failed for chapter {chapter_num}: {e}")
 
-                # 章节生成后一致性检查（非阻塞）
-                if character_state_text:
+                    # 更新角色状态
+                    if character_state_text:
+                        try:
+                            new_state = await update_character_state(
+                                chapter_text=draft_text,
+                                old_state=character_state_text,
+                                llm_config=llm_config,
+                            )
+                            character_state_text = new_state
+                            await _save_asset(db, str(task.project_id), "characters", new_state)
+                        except Exception as e:
+                            logger.warning(f"Character state update failed for chapter {chapter_num}: {e}")
+
+                    # 提取并更新 world_state（非阻塞）
                     try:
-                        check_result = await check_chapter_consistency(
+                        delta = await extract_world_state_delta(
                             chapter_text=draft_text,
-                            character_state_text=character_state_text,
-                            previous_chapter_draft=previous_draft,
+                            chapter_number=chapter_num,
+                            current_state=world_state,
+                            template=template,
+                            llm_config=llm_config,
                         )
-                        if "INCONSISTENT" in check_result.upper():
-                            logger.warning(f"Batch chapter {chapter_num} consistency issues detected:\n{check_result}")
-                        else:
-                            logger.info(f"Batch chapter {chapter_num} consistency check passed.")
+                        if not delta.get("no_changes"):
+                            world_state = merge_world_state(world_state, delta)
+                            await _save_asset(
+                                db, str(task.project_id), "world_state",
+                                json.dumps(world_state, ensure_ascii=False, indent=2)
+                            )
+                            logger.info(f"Batch world state updated for chapter {chapter_num}")
                     except Exception as e:
-                        logger.warning(f"Batch chapter consistency check failed for chapter {chapter_num}: {e}")
+                        logger.warning(f"Batch world state update failed for chapter {chapter_num}: {e}")
 
-                # 更新角色状态
-                if character_state_text:
-                    try:
-                        new_state = await update_character_state(
-                            chapter_text=draft_text,
-                            old_state=character_state_text,
-                        )
-                        character_state_text = new_state
-                        await _save_asset(db, str(task.project_id), "characters", new_state)
-                    except Exception as e:
-                        logger.warning(f"Character state update failed for chapter {chapter_num}: {e}")
+                    await db.commit()
+                    generated_count += 1
+                except Exception as e:
+                    logger.exception(f"Batch chapter {chapter_num} generation failed: {e}")
+                    failed_chapters.append({"chapter_num": chapter_num, "error": str(e)})
+                    await db.commit()
 
-                await db.commit()
-
-                generated_count += 1
-                progress = 10 + int((generated_count / total) * 85)
+                progress = 10 + int((idx + 1) / total * 85)
                 await update_task_status(
                     db, task_id, "running", progress=progress,
-                    result={"current_chapter": chapter_num, "completed": generated_count, "total": total}
+                    result={
+                        "current_chapter": chapter_num,
+                        "completed": generated_count,
+                        "total": total,
+                        "failed": len(failed_chapters),
+                        "failed_chapters": failed_chapters,
+                    }
                 )
 
-            await update_task_status(
-                db, task_id, "success", progress=100,
-                result={"total": total, "generated": generated_count}
-            )
-            logger.info(f"Batch chapters task {task_id} completed: {generated_count}/{total}")
+            if failed_chapters:
+                await update_task_status(
+                    db, task_id, "success", progress=100,
+                    result={
+                        "total": total,
+                        "generated": generated_count,
+                        "failed_count": len(failed_chapters),
+                        "failed_chapters": failed_chapters,
+                    }
+                )
+                logger.warning(f"Batch chapters task {task_id} completed with failures: {generated_count}/{total}, failed: {failed_chapters}")
+            else:
+                await update_task_status(
+                    db, task_id, "success", progress=100,
+                    result={"total": total, "generated": generated_count}
+                )
+                logger.info(f"Batch chapters task {task_id} completed: {generated_count}/{total}")
         except Exception as e:
             logger.exception(f"Batch chapters task {task_id} failed: {e}")
             try:
@@ -518,6 +662,8 @@ async def run_drama_plan_task(task_id: uuid.UUID) -> None:
             project = await get_project_by_id(db, uuid.UUID(str(task.project_id)))
             if not project:
                 raise RuntimeError("Project not found")
+
+            llm_config = await resolve_llm_config(str(project.owner_id), db)
 
             # 读取章节正文和角色设定
             from app.models.project import Chapter
@@ -561,6 +707,7 @@ async def run_drama_plan_task(task_id: uuid.UUID) -> None:
                     characters_text=characters_text,
                     episode_num=episode_num,
                     chapters_range=chapters_range,
+                    llm_config=llm_config,
                 )
 
                 episodes.append({
@@ -616,6 +763,12 @@ async def run_drama_episode_task(task_id: uuid.UUID) -> None:
                 return
 
             await update_task_status(db, task_id, "running", progress=10)
+
+            project = await get_project_by_id(db, uuid.UUID(str(task.project_id)))
+            if not project:
+                raise RuntimeError("Project not found")
+
+            llm_config = await resolve_llm_config(str(project.owner_id), db)
 
             episode_num = 1
             if task.params and isinstance(task.params, dict):
@@ -702,6 +855,7 @@ async def run_drama_episode_task(task_id: uuid.UUID) -> None:
                 chapter_texts=chapter_texts,
                 characters_text=characters_text,
                 context_scripts=context_scripts,
+                llm_config=llm_config,
             )
 
             await update_task_status(db, task_id, "running", progress=80)
@@ -740,6 +894,8 @@ async def run_drama_batch_task(task_id: uuid.UUID) -> None:
             project = await get_project_by_id(db, uuid.UUID(str(task.project_id)))
             if not project:
                 raise RuntimeError("Project not found")
+
+            llm_config = await resolve_llm_config(str(project.owner_id), db)
 
             from app.models.project import DramaEpisode, Chapter
             result = await db.execute(
@@ -814,6 +970,7 @@ async def run_drama_batch_task(task_id: uuid.UUID) -> None:
                     chapter_texts=chapter_texts,
                     characters_text=characters_text,
                     context_scripts=context_scripts,
+                    llm_config=llm_config,
                 )
 
                 episode.script_json = script

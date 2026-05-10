@@ -384,20 +384,32 @@ def _parse_llm_json(content: str) -> dict | None:
     return None
 
 
-async def _invoke_llm(prompt: str, max_retries: int = 3, max_tokens: int | None = None) -> str:
+async def _invoke_llm(prompt: str, max_retries: int = 3, max_tokens: int | None = None, llm_config: dict | None = None) -> str:
     """调用 LLM，带重试，支持自定义 max_tokens"""
-    if not settings.LLM_API_KEY:
+    api_key = (llm_config.get("api_key") if llm_config else None) or settings.LLM_API_KEY
+    if not api_key:
         raise RuntimeError("LLM API key not configured")
 
-    adapter = create_llm_adapter(
-        interface_format=settings.LLM_INTERFACE_FORMAT,
-        base_url=settings.LLM_BASE_URL,
-        model_name=settings.LLM_MODEL,
-        api_key=settings.LLM_API_KEY,
-        temperature=settings.LLM_TEMPERATURE,
-        max_tokens=max_tokens or settings.LLM_MAX_TOKENS,
-        timeout=settings.LLM_TIMEOUT,
-    )
+    if llm_config:
+        adapter = create_llm_adapter(
+            interface_format=llm_config["interface_format"],
+            base_url=llm_config["base_url"],
+            model_name=llm_config["model"],
+            api_key=llm_config["api_key"],
+            temperature=settings.LLM_TEMPERATURE,
+            max_tokens=max_tokens or llm_config["max_tokens"],
+            timeout=llm_config["timeout"],
+        )
+    else:
+        adapter = create_llm_adapter(
+            interface_format=settings.LLM_INTERFACE_FORMAT,
+            base_url=settings.LLM_BASE_URL,
+            model_name=settings.LLM_MODEL,
+            api_key=settings.LLM_API_KEY,
+            temperature=settings.LLM_TEMPERATURE,
+            max_tokens=max_tokens or settings.LLM_MAX_TOKENS,
+            timeout=settings.LLM_TIMEOUT,
+        )
 
     for attempt in range(max_retries):
         try:
@@ -418,6 +430,7 @@ async def generate_drama_outline(
     characters_text: str,
     episode_num: int = 1,
     chapters_range: str = "",
+    llm_config: dict | None = None,
 ) -> dict:
     """
     将小说章节文本改编为单集短剧大纲（JSON）。
@@ -437,7 +450,7 @@ async def generate_drama_outline(
 
     full_prompt = f"{_EPISODE_OUTLINE_SYSTEM_PROMPT}\n\n{user_prompt}"
     logger.info(f"Generating drama outline for episode {episode_num} ...")
-    raw = await _invoke_llm(full_prompt)
+    raw = await _invoke_llm(full_prompt, llm_config=llm_config)
 
     outline = _parse_llm_json(raw)
     if not outline:
@@ -450,34 +463,12 @@ async def generate_drama_outline(
     return outline
 
 
-def _build_context_summary(context_scripts: list[dict]) -> str:
-    """从前几集脚本中提取关键信息，生成前情提要文本"""
-    if not context_scripts:
-        return "（无前集信息，这是第一集）"
-    lines = []
-    for cs in context_scripts[-3:]:  # 只取最近 3 集
-        ep_num = cs.get("episode_num", "?")
-        title = cs.get("title", "未命名")
-        key_items = cs.get("key_items", [])
-        cliffhanger = ""
-        scenes = cs.get("scenes", [])
-        if scenes:
-            last_scene = scenes[-1]
-            shots = last_scene.get("shots", [])
-            if shots:
-                last_shot = shots[-1]
-                dialogue = last_shot.get("dialogue", {})
-                if dialogue:
-                    cliffhanger = f"最后台词：{dialogue.get('speaker', '?')}「{dialogue.get('content', '')}」"
-        lines.append(f"第{ep_num}集《{title}》：关键道具/信息 {key_items}；{cliffhanger}")
-    return "\n".join(lines)
-
-
 async def generate_drama_script(
     outline: dict,
     chapter_texts: str,
     characters_text: str,
     context_scripts: list[dict] | None = None,
+    llm_config: dict | None = None,
 ) -> dict:
     """
     根据短剧大纲和原始小说片段生成分镜头剧本（JSON）。
@@ -504,7 +495,7 @@ async def generate_drama_script(
     full_prompt = f"{_SCRIPT_SYSTEM_PROMPT}\n\n{user_prompt}"
     logger.info(f"Generating drama script for episode {outline.get('episode_num', 1)} ...")
     # Script JSON 通常很长，需要更大的 token 上限
-    raw = await _invoke_llm(full_prompt, max_tokens=12000)
+    raw = await _invoke_llm(full_prompt, max_tokens=12000, llm_config=llm_config)
 
     script = _parse_llm_json(raw)
     if not script:
@@ -513,3 +504,27 @@ async def generate_drama_script(
     script.setdefault("episode_num", outline.get("episode_num", 1))
     script.setdefault("title", outline.get("title", "未命名"))
     return script
+
+
+def _build_context_summary(context_scripts: list[dict]) -> str:
+    """从前几集脚本中提取关键信息，生成前情提要文本"""
+    if not context_scripts:
+        return "（无前集信息，这是第一集）"
+    lines = []
+    for cs in context_scripts[-3:]:  # 只取最近 3 集
+        ep_num = cs.get("episode_num", "?")
+        title = cs.get("title", "未命名")
+        key_items = cs.get("key_items", [])
+        cliffhanger = ""
+        scenes = cs.get("scenes", [])
+        if scenes:
+            last_scene = scenes[-1]
+            shots = last_scene.get("shots", [])
+            if shots:
+                last_shot = shots[-1]
+                dialogue = last_shot.get("dialogue", {})
+                if dialogue:
+                    cliffhanger = f"最后台词：{dialogue.get('speaker', '?')}「{dialogue.get('content', '')}」"
+        lines.append(f"第{ep_num}集《{title}》：关键道具/信息 {key_items}；{cliffhanger}")
+    return "\n".join(lines)
+

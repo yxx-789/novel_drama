@@ -57,8 +57,8 @@
 |------|------|
 | **背景** | LLM 生成任务耗时 30 秒至数分钟，必须异步化 |
 | **选项** | A. RQ；B. Dramatiq；C. Celery；D. FastAPI BackgroundTasks |
-| **决策** | **MVP 优先 RQ 或 Dramatiq，Celery 作为备选** |
-| **理由** | 1. RQ/Dramatiq 轻量，学习成本低，与 Redis 集成简单；2. Celery 功能强大但配置复杂，MVP 阶段不需要分布式路由和复杂工作流；3. FastAPI BackgroundTasks 不适合重启后恢复的任务；4. 后续如需复杂工作流可平滑迁移到 Celery |
+| **决策** | **Celery + Redis** |
+| **理由** | 1. Celery 是 Python 生态最成熟的分布式任务队列，社区文档完善；2. Redis 作为 broker 和 backend，与现有 Redis 缓存共用基础设施；3. 支持任务持久化、取消（revoke）、定时任务等能力，解决 `asyncio.create_task` 重启丢任务问题；4. 通过 `asyncio.run()` 包装层复用现有异步业务代码，迁移成本低；5. Docker Compose 一键启动 worker 服务，部署简单 |
 | **影响** | Worker 进程独立运行，通过 Redis 与主服务通信；任务状态写入 generation_tasks 表 |
 | **可逆性** | 高。任务执行逻辑封装在 Service 层，切换队列框架只需改 Worker 入口和入队方式 |
 
@@ -155,13 +155,26 @@
 
 ---
 
+## D012：长程一致性 —— 世界状态结构化记忆
+
+| 字段 | 内容 |
+|------|------|
+| **背景** | 章节数超过 10 章后，LLM 频繁遗忘角色能力、物品、境界等设定，产生强烈"AI 感"，尤其修仙/都市/系统文对一致性要求极高 |
+| **选项** | A. 纯文本角色状态（已有方案，随章节增长膨胀且检索低效）；B. 向量检索 RAG（检索召回精度不稳定，适合参考不适合精确状态追踪）；C. 结构化 JSON 世界状态 + Delta 提取 + 摘要注入 |
+| **决策** | **C. 结构化 JSON 世界状态** |
+| **理由** | 1. 结构化数据精确可控，角色/事件/世界规则分门别类，避免纯文本的模糊性；2. Delta 提取只记录变更，避免每章全量重写导致的 token 浪费和幻觉；3. 状态摘要筛选 5-10 条最相关点注入 prompt，既保证上下文不超限，又确保关键信息不遗漏；4. 变更历史时间线可回溯，便于前端展示和人工校验；5. 不同 genre 用不同模板（修仙追境界/法宝，都市追资产/关系），贴合类型小说需求 |
+| **影响** | 新增 `world_state` asset_type，generation_service 增加 3 个函数，task_service 单章/批量任务均集成状态读写，前端新增「角色与世界」Tab |
+| **可逆性** | 高。`world_state_summary` 参数有默认值，不传入时不影响生成逻辑；旧项目无 world_state asset 自动初始化为空结构 |
+
+---
+
 ## 待决策项
 
 以下决策在开发过程中根据实际情况确定：
 
 | 编号 | 议题 | 状态 |
 |------|------|------|
-| D012 | 任务队列最终选型（RQ vs Dramatiq） | 待 Phase 1 脚手架搭建时确定 |
+| D012 | 任务队列最终选型（RQ vs Dramatiq vs Celery） | **已确定：Celery** |
 | D013 | API Key 加密方案（Fernet / 环境变量） | 待 Phase 1 开发时确定 |
 | D014 | 前端路由方案（React Router / TanStack Router） | 待 Phase 1 前端搭建时确定 |
 | D015 | 任务进度通知方案（轮询 / SSE） | 待 Phase 1 开发时确定，MVP 先用轮询 |

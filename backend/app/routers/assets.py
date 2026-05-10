@@ -14,7 +14,7 @@ from app.services.project_service import get_project_by_id
 
 router = APIRouter()
 
-ASSET_TYPES = {"architecture", "directory", "characters", "settings", "drama_plan"}
+ASSET_TYPES = {"architecture", "directory", "characters", "settings", "drama_plan", "world_state"}
 
 
 @router.get("/projects/{project_id}/assets/{asset_type}/export")

@@ -6,11 +6,13 @@ import { getCurrentUser } from '../api/auth'
 import { useAuthStore } from '../store/auth'
 import { queryClient } from '../queryClient'
 import type { Project } from '../api/project'
+import AISettingsDrawer from '../components/AISettingsDrawer'
 
 function ProjectList() {
   const navigate = useNavigate()
   const { user, clearAuth } = useAuthStore()
   const [searchQuery, setSearchQuery] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   // 获取当前用户
   useQuery({
@@ -44,6 +46,7 @@ function ProjectList() {
 
   const handleLogout = () => {
     clearAuth()
+    queryClient.clear()
     navigate('/login')
   }
 
@@ -92,6 +95,9 @@ function ProjectList() {
           {user && (
             <span className="text-xs text-slate-400 font-medium">{user.username}</span>
           )}
+          <button onClick={() => setSettingsOpen(true)} className="btn-ghost">
+            设置
+          </button>
           <button onClick={handleLogout} className="btn-ghost">
             退出
           </button>
@@ -201,6 +207,8 @@ function ProjectList() {
           </div>
         )}
       </main>
+
+      <AISettingsDrawer isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   )
 }

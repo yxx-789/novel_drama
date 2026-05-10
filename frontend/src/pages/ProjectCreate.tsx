@@ -15,9 +15,9 @@ function ProjectCreate() {
 
   const mutation = useMutation({
     mutationFn: createProject,
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
-      navigate('/projects')
+      navigate(`/projects/${data.id}`)
     },
     onError: (err: any) => {
       setError(err.response?.data?.detail || '创建项目失败')

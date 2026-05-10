@@ -1,4 +1,3 @@
-import asyncio
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,15 +8,15 @@ from app.models.user import User
 from app.routers.dependency import get_current_user
 from app.schemas.task import TaskOut
 from app.services.project_service import get_project_by_id
-from app.services.task_service import (
-    create_task,
-    run_architecture_task,
-    run_batch_chapters_task,
-    run_chapter_task,
-    run_directory_task,
-    run_drama_batch_task,
-    run_drama_episode_task,
-    run_drama_plan_task,
+from app.services.task_service import create_task
+from app.worker.tasks import (
+    run_architecture,
+    run_batch_chapters,
+    run_chapter,
+    run_directory,
+    run_drama_batch,
+    run_drama_episode,
+    run_drama_plan,
 )
 
 router = APIRouter()
@@ -35,7 +34,7 @@ async def trigger_architecture_generation(
     task = await create_task(
         db, project_id, "architecture", params={"project_id": str(project_id)}
     )
-    asyncio.create_task(run_architecture_task(task.id))
+    run_architecture.delay(str(task.id))
     return task
 
 
@@ -49,7 +48,7 @@ async def trigger_directory_generation(
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在或无权限访问")
     task = await create_task(db, project_id, "directory", params={"project_id": str(project_id)})
-    asyncio.create_task(run_directory_task(task.id))
+    run_directory.delay(str(task.id))
     return task
 
 
@@ -66,7 +65,7 @@ async def trigger_chapter_generation(
     task = await create_task(
         db, project_id, "chapter", params={"project_id": str(project_id), "chapter_num": chapter_num}
     )
-    asyncio.create_task(run_chapter_task(task.id))
+    run_chapter.delay(str(task.id))
     return task
 
 
@@ -82,7 +81,7 @@ async def trigger_batch_chapters_generation(
     task = await create_task(
         db, project_id, "batch_chapters", params={"project_id": str(project_id)}
     )
-    asyncio.create_task(run_batch_chapters_task(task.id))
+    run_batch_chapters.delay(str(task.id))
     return task
 
 
@@ -98,7 +97,7 @@ async def trigger_drama_plan_generation(
     task = await create_task(
         db, project_id, "drama_plan", params={"project_id": str(project_id)}
     )
-    asyncio.create_task(run_drama_plan_task(task.id))
+    run_drama_plan.delay(str(task.id))
     return task
 
 
@@ -120,7 +119,7 @@ async def trigger_drama_episode_generation(
     task = await create_task(
         db, project_id, "drama_episode", params=params
     )
-    asyncio.create_task(run_drama_episode_task(task.id))
+    run_drama_episode.delay(str(task.id))
     return task
 
 
@@ -136,5 +135,5 @@ async def trigger_drama_batch_generation(
     task = await create_task(
         db, project_id, "drama_batch", params={"project_id": str(project_id)}
     )
-    asyncio.create_task(run_drama_batch_task(task.id))
+    run_drama_batch.delay(str(task.id))
     return task

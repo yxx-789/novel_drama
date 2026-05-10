@@ -1,11 +1,11 @@
 import { getTask } from '../../api/task'
 
-export const pollTask = async (
+export const pollTask = (
   taskId: string,
   onSuccess: () => void,
   onError?: (msg: string) => void,
   onProgress?: (progress: number, status: string) => void,
-) => {
+): (() => void) => {
   const interval = setInterval(async () => {
     try {
       const task = await getTask(taskId)
@@ -17,10 +17,16 @@ export const pollTask = async (
         clearInterval(interval)
         onError?.(task.error_msg || '任务失败')
       }
-    } catch {
-      // ignore polling errors
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        clearInterval(interval)
+        onError?.('任务不存在或已被删除')
+        return
+      }
+      // ignore other polling errors
     }
   }, 3000)
+  return () => clearInterval(interval)
 }
 
 export const getTaskStepLabel = (type: string, progress: number): string => {

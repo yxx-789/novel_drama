@@ -2,7 +2,34 @@
 
 ## [未发布]
 
+### 修复
+
+- **批量章节生成失败**：`generate_chapter_draft` 和 `update_character_state` 中 LLM API key 检查逻辑与 `generate_architecture` 不一致，仅检查全局 `settings.LLM_API_KEY` 而忽略用户自定义的 `llm_config.api_key`，导致使用个人 API key 时批量生成全部失败
+  - `backend/app/services/generation_service.py`：统一两处检查逻辑为 `if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key"))`
+- **世界状态始终为空**：`extract_world_state_delta` 和 `build_state_summary` 存在同样的 API key 检查缺失，导致个人 API key 模式下世界状态提取被静默跳过
+  - `backend/app/services/generation_service.py`：修复两处检查逻辑
+- **批量短剧脚本生成失败**：`drama_service.py` 中 `generate_drama_script` 被重复定义（后一个定义无 `llm_config` 参数），覆盖了带参数的版本，`task_service.py` 传入 `llm_config` 时触发 `unexpected keyword argument`
+  - `backend/app/services/drama_service.py`：删除第二个重复定义，保留带 `llm_config` 的版本
+
 ### 新增
+
+- **Celery 持久化任务队列集成**
+  - 新增 `backend/app/core/celery_app.py` —— Celery 应用配置（Redis broker + backend）
+  - 新增 `backend/app/worker/tasks.py` —— 7 个 Celery 任务包装器（architecture / directory / chapter / batch_chapters / drama_plan / drama_episode / drama_batch），通过 `asyncio.run()` 复用现有异步业务代码
+  - 新增 `docker-compose.yml` `worker` 服务 —— 独立 Celery worker 容器，`-c 1` 单并发避免 LLM 限流
+  - 新增 `POST /api/tasks/{task_id}/cancel` —— 任务取消 API，调用 `celery_app.control.revoke(terminate=True)`
+  - 重写 `backend/app/routers/generate.py` —— 所有生成接口从 `asyncio.create_task()` 切换为 `celery_task.delay()`
+  - 更新 `backend/app/main.py` —— lifespan 启动时执行 `recover_zombie_tasks()`：扫描运行中超 30 分钟任务并标记为 failed，防止 worker 重启导致任务悬挂
+  - `backend/requirements.txt` 新增 `celery==5.4.0`
+  - 决策更新：`memory-bank/decisions.md` D004 从 "RQ/Dramatiq" 修正为 **Celery + Redis**
+
+- **生产部署配置**
+  - 新增 `backend/Dockerfile` —— 多阶段构建生产镜像（Python 3.12 slim + 依赖分层缓存）
+  - 新增 `railway.toml` —— Railway 平台部署配置（自动迁移 + 健康检查 + 失败重启策略）
+  - 更新 `backend/app/main.py` —— CORS 支持 `CORS_ORIGINS` 环境变量配置，便于生产环境限制域名
+  - 更新 `backend/.env.example` —— 补充 `FERNET_SECRET`、`LLM_*`、`CORS_ORIGINS` 等生产环境变量
+  - 更新 `frontend/.env.example` —— 补充生产环境 API 地址说明
+  - 新增 `docs/DEPLOYMENT.md` —— Railway + Vercel 部署完整指南
 
 - 短剧脚本导出功能：支持 JSON / Markdown / CSV 三种格式下载
   - 后端：`backend/app/services/drama/exporter.py` 纯内存格式化服务（复用旧项目核心逻辑）
@@ -210,6 +237,70 @@
 - TypeScript 编译通过
 - docs/API_SPEC.md / CHANGELOG.md / progress.md 同步更新
 
+### 结构化世界状态记忆（长程一致性基础设施）
+
+- **Genre Templates**
+  - 新增 `backend/app/generator/world_state_templates.py`
+  - 定义 `GENERIC_TEMPLATE`（通用）、`XIANXIA_TEMPLATE`（修仙/玄幻/武侠）、`URBAN_TEMPLATE`（都市/现代/商战/系统）三套追踪维度 schema
+  - `get_template(genre)` 按 genre 字符串自动匹配最合适的模板
+
+- **Prompt 层**
+  - `backend/app/generator/prompts.py` 新增 `extract_world_state_delta_prompt`：要求 LLM 从章节正文中提取结构化 JSON 变更 delta（characters / events / world 三类）
+  - 新增 `build_state_summary_prompt`：要求 LLM 从当前世界状态中筛选 5-10 条与下一章最相关的状态点
+
+- **Generation Service 扩展**
+  - `backend/app/services/generation_service.py`：
+    - `_parse_llm_json()`：鲁棒 JSON 提取（去 markdown 代码块、补全截断括号）
+    - `extract_world_state_delta()`：异步 LLM 调用，按 genre 模板提取 delta
+    - `merge_world_state()`：深合并 delta 到旧状态 + 自动记录变更历史（chapter / category / key / field / old / new）
+    - `build_state_summary()`：异步 LLM 调用，生成注入下一章 prompt 的状态摘要
+    - `generate_chapter_draft()` 新增 `world_state_summary: str = ""` 参数，摘要追加在 character_state 后注入 prompt
+
+- **Task Service 集成**
+  - `run_chapter_task()` / `run_batch_chapters_task()`：
+    - 生成前：读取 `world_state` asset → 调用 `build_state_summary()` → 追加到 character_state
+    - 生成后：调用 `extract_world_state_delta()` → 若无 `no_changes` 则 `merge_world_state()` → 保存回 asset
+  - 向后兼容：无 world_state asset 时自动初始化空结构，不影响旧项目
+
+- **前端「角色与世界」Tab**
+  - 新增 `frontend/src/pages/ProjectDetail/WorldStateTab.tsx`
+  - 读取 `world_state` asset（优先 `content_json`，fallback `content_text` JSON 解析）
+  - 三栏卡片展示：角色状态 🧑 / 事件追踪 📌 / 世界设定 🌍
+  - 变更历史时间线：按章节倒序，每项显示 category icon + key · field + old → new（删除线/绿色高亮）
+  - 空状态引导：未生成章节时显示友好提示"生成章节后会自动构建角色与世界状态追踪"
+  - `frontend/src/pages/ProjectDetail/index.tsx`：TabKey / tabs 数组 / 条件渲染 集成
+
+- 后端 import 验证通过，前端构建零警告
+
+### 后端生成质量与稳定性优化
+
+- **修复 world_state_summary 未注入 prompt**
+  - `backend/app/generator/prompts.py`：`first_chapter_draft_prompt` / `next_chapter_draft_prompt` 新增 `{world_state_summary}` 独立占位符
+  - `backend/app/services/generation_service.py`：`generate_chapter_draft()` 将 `world_state_summary` 作为独立参数传入 prompt（不再拼接到 `character_state_text`），避免重复且让 LLM 明确识别世界状态约束
+  - `backend/app/services/task_service.py`：`run_chapter_task()` / `run_batch_chapters_task()` 同步调整，独立传递 `world_state_summary`
+
+- **Prompt 写作要求强化**
+  - 两版章节 prompt 新增明确约束："必须严格遵循【世界状态摘要】中的所有设定，禁止出现与摘要矛盾的情节（如已死亡角色出场、已损坏物品完好、境界/能力倒退等）"
+
+- **LLM 输出清洗精确化**
+  - `backend/app/services/generation_service.py`：`_invoke_with_retry()` 从全局 `replace("```", "")` 改为正则精确去除首尾 markdown 代码块标记（`^```[\w]*\n?` 和 `\n?```\s*$`），避免误删正文中的代码片段或类似标记
+
+- **merge_world_state 无副作用**
+  - 新增 `copy.deepcopy(delta)`，防止 `fields.pop("changed_fields")` 修改传入的原始 delta dict
+
+- **build_state_summary Token 精简**
+  - `slim_state` 除 history 截断为最近 3 章外，`characters` / `events` / `world` 每类限制最多 10 个条目，优先保留最近 3 章内有变更的实体，防止长程状态膨胀导致 prompt token 超限
+
+- **批量生成错误隔离**
+  - `backend/app/services/task_service.py`：`run_batch_chapters_task()` 循环内包裹单章 try/except
+  - 单章失败时记录到 `failed_chapters` 列表（含章节号和错误信息），继续生成后续章节，不中断整个批量任务
+  - 任务最终结果报告成功/失败明细
+
+- **新增单元测试**
+  - 新增 `backend/app/tests/test_world_state.py`，覆盖模板选择、JSON 解析鲁棒性、状态合并与变更历史，21 用例全部通过
+
+- 后端 import 验证通过，前端构建零警告
+
 ### Bug 修复
 
 - **短剧改编状态同步修复**
@@ -264,6 +355,28 @@
   - 当前激活 Tab 新增 `bg-indigo-50/50` 底色高亮 + `rounded-t-lg` 圆角
   - 非激活 Tab 悬停时显示 `hover:bg-slate-50/50` 反馈
   - 视觉层级更清晰，当前位置一目了然
+
+### Bug 修复
+
+- **修复「角色与世界」Tab 400 错误**
+  - `backend/app/routers/assets.py`：`ASSET_TYPES` 白名单缺少 `"world_state"`，前端调用 `GET /projects/{id}/assets/world_state` 时返回 400 "不支持的资产类型"
+  - 已添加 `"world_state"` 到白名单，后端 import 验证通过
+
+### ProjectDetail React Query 深度替换
+
+- 新增 `frontend/src/pages/ProjectDetail/useProjectData.ts` —— 自定义 hook 集中管理项目详情页全部数据查询与变更：
+  - Queries：`['project', id]` / `['chapters', id]` / `['asset', id, type]` / `['dramaEpisodes', id]`
+  - Mutations：`saveProject` / `saveAsset` / `addChapter` / `updateChapter` / `deleteChapter` / `updateEpisode` / `updateSource`
+  - 所有 mutation 成功后自动 `invalidateQueries`，数据自动刷新
+- 重写 `frontend/src/pages/ProjectDetail/index.tsx` —— 移除 5 个手动 `useEffect` 数据获取逻辑：
+  - 项目详情、章节列表、架构/目录/人物/短剧剧集数据全部改为从 `useProjectData` 读取
+  - 保留编辑态 local state（`architectureText` / `directoryText`），通过 `useEffect` 在 dirty=false 时与 query 数据同步
+  - 任务完成后的数据刷新从手动 `setState` 改为 `queryClient.invalidateQueries`
+- `frontend/src/pages/ProjectDetail/ArchitectureTab.tsx` / `DirectoryTab.tsx` —— props 精简：
+  - 移除 `setXxxText` 和 `setDirty`，改为接收 `value` + `onChange` 回调，组件更纯粹
+- `frontend/src/pages/ProjectDetail/WorldStateTab.tsx` —— 接入 React Query：
+  - 移除内部 `useEffect` + `useState`，改为 `useQuery(['asset', id, 'world_state'])`
+- 前端构建零警告
 
 ### AI 问答功能
 

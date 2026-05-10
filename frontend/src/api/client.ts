@@ -27,6 +27,8 @@ apiClient.interceptors.response.use(
       useToastStore.getState().addToast('登录已过期，请重新登录', 'warning')
     } else if (status === 403) {
       useToastStore.getState().addToast('无权访问该资源', 'error')
+    } else if (status === 404) {
+      // Don't auto-toast for 404 — callers often expect missing resources (polling, optional assets)
     } else if (status >= 500) {
       useToastStore.getState().addToast(detail || '服务器错误，请稍后重试', 'error')
     } else if (detail) {

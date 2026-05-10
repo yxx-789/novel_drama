@@ -93,6 +93,68 @@ Authorization: Bearer <token>
 }
 ```
 
+### 用户设置
+
+| 方法 | 路径 | 说明 | 状态 |
+|------|------|------|------|
+| GET | /user/llm-config | 获取当前用户 LLM 配置 | 已实现 |
+| PUT | /user/llm-config | 更新用户 LLM 配置 | 已实现 |
+| POST | /user/llm-config/test | 测试 LLM 配置连接 | 已实现 |
+
+**请求/响应示例**
+
+获取配置：
+```http
+GET /api/user/llm-config
+Authorization: Bearer <token>
+```
+
+响应：
+```json
+{
+  "api_key": "sk-xxxxxxxx",
+  "base_url": "https://api.openai.com/v1",
+  "model": "gpt-4o-mini",
+  "source": "user_custom"
+}
+```
+
+更新配置：
+```http
+PUT /api/user/llm-config
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "api_key": "sk-new-key",
+  "base_url": "https://custom.api.com/v1",
+  "model": "custom-model"
+}
+```
+
+> `api_key` 传 `null` 或省略表示不修改；传空字符串 `""` 表示清除自定义 Key，恢复平台默认。
+
+测试连接：
+```http
+POST /api/user/llm-config/test
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "api_key": "sk-test-key",
+  "base_url": "https://custom.api.com/v1",
+  "model": "custom-model"
+}
+```
+
+响应：
+```json
+{
+  "success": true,
+  "message": "连接成功，模型响应: Hello"
+}
+```
+
 ### 项目
 
 | 方法 | 路径 | 说明 | 状态 |
@@ -198,7 +260,7 @@ Authorization: Bearer <token>
 }
 ```
 
-> architecture / directory / chapter 均已接入真实 LLM 生成。创建任务后立即返回 `task_id`，后台通过 `asyncio.create_task` 异步执行，状态流转：pending → running → success。chapter 生成依赖前置资产：需先完成 architecture 和 directory 生成。
+> architecture / directory / chapter 均已接入真实 LLM 生成。创建任务后立即返回 `task_id`，后台通过 **Celery** 异步执行，状态流转：pending → running → success / failed。支持通过 `POST /tasks/{task_id}/cancel` 取消运行中任务。chapter 生成依赖前置资产：需先完成 architecture 和 directory 生成。
 
 ### 章节
 
@@ -360,7 +422,7 @@ Authorization: Bearer <token>
 | POST | /projects/{id}/tasks | 创建任务 | 已实现 |
 | GET | /projects/{id}/tasks | 任务列表 | 已实现 |
 | GET | /tasks/{task_id} | 任务详情 | 已实现 |
-| POST | /tasks/{task_id}/cancel | 取消任务 | 待实现 |
+| POST | /tasks/{task_id}/cancel | 取消任务 | 已实现 |
 | POST | /tasks/{task_id}/retry | 重试任务 | 待实现 |
 
 **请求/响应示例**

@@ -111,6 +111,7 @@ async def send_message(
     session_id: str,
     user_id: str,
     content: str,
+    llm_config: dict | None = None,
 ) -> ChatMessage:
     # 校验会话归属
     session = await get_session_with_messages(db, session_id, user_id)
@@ -150,15 +151,26 @@ async def send_message(
         messages.append({"role": msg.role, "content": msg.content})
 
     # 调用 LLM
-    adapter = create_llm_adapter(
-        interface_format=settings.LLM_INTERFACE_FORMAT,
-        base_url=settings.LLM_BASE_URL,
-        model_name=settings.LLM_MODEL,
-        api_key=settings.LLM_API_KEY,
-        temperature=0.7,
-        max_tokens=4096,
-        timeout=settings.LLM_TIMEOUT,
-    )
+    if llm_config:
+        adapter = create_llm_adapter(
+            interface_format=llm_config["interface_format"],
+            base_url=llm_config["base_url"],
+            model_name=llm_config["model"],
+            api_key=llm_config["api_key"],
+            temperature=0.7,
+            max_tokens=4096,
+            timeout=llm_config["timeout"],
+        )
+    else:
+        adapter = create_llm_adapter(
+            interface_format=settings.LLM_INTERFACE_FORMAT,
+            base_url=settings.LLM_BASE_URL,
+            model_name=settings.LLM_MODEL,
+            api_key=settings.LLM_API_KEY,
+            temperature=0.7,
+            max_tokens=4096,
+            timeout=settings.LLM_TIMEOUT,
+        )
     assistant_content = await adapter.invoke_messages(messages)
 
     # 保存 AI 回复

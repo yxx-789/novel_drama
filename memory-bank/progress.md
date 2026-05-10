@@ -219,12 +219,70 @@ Phase 1: 最小业务闭环 —— 项目 API（已完成）
 - [x] **架构一致性校验（第6步）**：Pipeline 新增 Step6，用 LLM 审查核心种子/角色动力学/角色状态/世界观/情节架构五要素之间的矛盾，发现不一致时记录 warning 日志
 - [x] 后端 import 验证通过，前端构建零警告
 
+### P1 内核质量优化
+
+- [x] **Temperature 分类控制**：设定类生成（架构/目录/角色状态）降至 0.3，章节正文保持 0.6，一致性校验降至 0.2，减少设定漂移
+- [x] **目录解析器鲁棒性增强**：支持 4 种标题格式备选正则（`第1章 - [标题]` / `第1章 [标题]` / `第1章：标题` / `Chapter 1`），解析失败时抛出明确错误而非静默跳过
+- [x] **章节生成后一致性检查**：每章生成后自动审查是否与角色状态/前文情节矛盾（已死亡角色重现、道具无故恢复等），发现问题记录 warning
+- [x] 后端 import 验证通过，前端构建零警告
+
+### P2 结构化世界状态记忆（长程一致性基础设施）
+
+- [x] **Genre Templates**：`backend/app/generator/world_state_templates.py`
+  - 新增 `GENERIC_TEMPLATE` / `XIANXIA_TEMPLATE` / `URBAN_TEMPLATE`
+  - `get_template(genre)` 按 genre 字符串匹配返回对应模板
+- [x] **Delta Extraction Prompt**：`extract_world_state_delta_prompt` —— LLM 从章节正文中提取结构化变更（JSON delta）
+- [x] **State Summary Prompt**：`build_state_summary_prompt` —— LLM 筛选 5-10 条最相关状态点注入下一章 prompt
+- [x] **Generation Service 扩展**：`backend/app/services/generation_service.py`
+  - 新增 `_parse_llm_json()`：鲁棒 JSON 提取（去 markdown 代码块、补全截断括号）
+  - 新增 `extract_world_state_delta()`：异步 LLM 调用提取 delta
+  - 新增 `merge_world_state()`：深合并 + 变更历史记录（old → new）
+  - 新增 `build_state_summary()`：异步 LLM 调用生成状态摘要
+  - `generate_chapter_draft()` 新增 `world_state_summary` 参数，追加到 character_state 后注入 prompt
+- [x] **Task Service 集成**：`backend/app/services/task_service.py`
+  - `run_chapter_task()` / `run_batch_chapters_task()`：
+    - 生成前读取 `world_state` asset，调用 `build_state_summary()` 构建摘要
+    - 生成后调用 `extract_world_state_delta()` 提取变更
+    - 无变更时跳过写入，有变更时 `merge_world_state()` 并保存回 asset
+  - 向后兼容：无 world_state asset 时自动初始化空结构
+- [x] **前端「角色与世界」Tab**：`frontend/src/pages/ProjectDetail/WorldStateTab.tsx`
+  - 读取 `world_state` asset，解析 JSON
+  - 角色/事件/世界设定三栏卡片展示
+  - 变更历史时间线（按章节倒序，显示 old → new）
+  - 空状态引导：未生成章节时显示友好提示
+- [x] **Tab 集成**：`frontend/src/pages/ProjectDetail/index.tsx`
+  - TabKey 新增 `'worldstate'`
+  - tabs 数组新增 `{ key: 'worldstate', label: '角色与世界' }`
+  - 条件渲染 `<WorldStateTab projectId={...} />`
+- [x] 后端 import 验证通过，前端构建零警告
+
+### P2 后端生成质量与稳定性优化
+
+- [x] **修复 world_state_summary 未注入 prompt**：`first_chapter_draft_prompt` / `next_chapter_draft_prompt` 新增 `{world_state_summary}` 占位符，`generate_chapter_draft` 将摘要独立传入（不再拼接到 character_state），避免重复且让 LLM 明确识别世界状态约束
+- [x] **Prompt 写作要求强化**：新增"必须严格遵循世界状态摘要，禁止矛盾情节"的明确约束（已死亡角色不得出场、已损坏物品不得完好等）
+- [x] **LLM 输出清洗精确化**：`_invoke_with_retry` 从全局 `replace("```", "")` 改为正则只去除首尾 markdown 代码块标记（`^```[\w]*\n?` 和 `\n?```\s*$`），避免误删正文中的代码片段或类似标记
+- [x] **merge_world_state 无副作用**：新增 `copy.deepcopy(delta)`，防止 `fields.pop("changed_fields")` 修改传入参数
+- [x] **build_state_summary Token 精简**：`slim_state` 除 history 截断为最近 3 章外，characters/events/world 每类限制最多 10 个条目，优先保留最近有变更的实体，防止长程状态膨胀导致 prompt 超限
+- [x] **批量生成错误隔离**：`run_batch_chapters_task` 循环内包裹单章 try/except，单章失败记录到 `failed_chapters` 后继续生成后续章节，任务结果报告成功/失败明细（含章节号和错误信息）
+- [x] **新增单元测试**：`backend/app/tests/test_world_state.py` 覆盖模板选择、JSON 解析鲁棒性、状态合并与变更历史，21 用例全部通过
+- [x] 后端 import 验证通过，前端构建零警告
+
 ## 待办事项
 
-### ProjectDetail React Query 深度替换（后续迭代）
+### ProjectDetail React Query 深度替换（已完成）
 
-- [ ] 项目详情 `useQuery(['project', id])`
-- [ ] 章节列表 `useQuery(['chapters', id])`
-- [ ] 架构/目录资产 `useQuery(['asset', id, type])`
-- [ ] 短剧剧集 `useQuery(['dramaEpisodes', id])`
-- [ ] 各 Tab 保存操作 `useMutation` + `invalidateQueries`
+- [x] 新增 `useProjectData` hook：集中封装项目详情 / 章节列表 / 资产 / 短剧剧集的 `useQuery` 与保存操作的 `useMutation`
+- [x] `index.tsx` 移除 5 个手动数据获取 `useEffect`，改为从 hook 读取；任务完成后改为 `queryClient.invalidateQueries` 自动刷新
+- [x] `ArchitectureTab` / `DirectoryTab` props 精简：`setXxxText` 改为 `value` + `onChange`，组件不再直接操作外部 state
+- [x] `WorldStateTab` 移除手动 `useEffect` + `useState`，改为 `useQuery(['asset', id, 'world_state'])`
+- [x] 各 Tab 保存操作接入 `useMutation`，成功后自动 `invalidateQueries`，无需手动 setState
+- [x] 前端构建零警告
+
+### 生产部署准备
+
+- [x] `backend/Dockerfile` —— 多阶段构建生产镜像（Python 3.12 slim）
+- [x] `railway.toml` —— Railway 部署配置（自动迁移 + 健康检查 + 重启策略）
+- [x] `backend/app/main.py` —— CORS 支持 `CORS_ORIGINS` 环境变量
+- [x] `backend/.env.example` —— 补充 `FERNET_SECRET`、`LLM_*`、`CORS_ORIGINS`
+- [x] `frontend/.env.example` —— 补充生产环境 API 地址说明
+- [x] `docs/DEPLOYMENT.md` —— Railway + Vercel 部署完整指南

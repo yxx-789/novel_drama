@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { login, register, getCurrentUser } from '../api/auth'
 import { useAuthStore } from '../store/auth'
+import { queryClient } from '../queryClient'
 
 function Login() {
   const navigate = useNavigate()
@@ -30,6 +31,7 @@ function Login() {
 
       const userData = await getCurrentUser()
       setUser(userData)
+      queryClient.clear()
       navigate('/projects')
     } catch (err: any) {
       const msg = err.response?.data?.detail || '操作失败，请重试'

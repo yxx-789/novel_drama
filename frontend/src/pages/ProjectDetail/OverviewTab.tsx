@@ -115,7 +115,15 @@ export default function OverviewTab({
           </div>
           <div className="flex justify-end space-x-4 pt-4">
             <button
-              onClick={() => { setEditing(false); setDirty(false) }}
+              onClick={() => {
+                setEditing(false)
+                setDirty(false)
+                setName(project.name)
+                setTopic(project.topic || '')
+                setGenre(project.genre || '')
+                setNumChapters(project.num_chapters)
+                setWordNumber(project.word_number)
+              }}
               className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50"
             >
               取消

@@ -47,13 +47,25 @@ class OpenAICompatibleAdapter(AsyncLLMAdapter):
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
         }
+        # 兼容用户填写完整 endpoint URL 的情况
+        url = self.base_url
+        if not url.endswith("/chat/completions"):
+            url = f"{url}/chat/completions"
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(
-                f"{self.base_url}/chat/completions",
+                url,
                 headers=headers,
                 json=payload,
             )
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                try:
+                    err_data = resp.json()
+                    err = err_data.get("error", {})
+                    err_msg = err.get("message", f"HTTP {resp.status_code}")
+                    err_code = err.get("code", "unknown")
+                    raise RuntimeError(f"[{err_code}] {err_msg}")
+                except (ValueError, KeyError):
+                    resp.raise_for_status()
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
             return content.replace("```", "").strip()

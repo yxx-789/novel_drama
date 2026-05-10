@@ -1,12 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useToastStore } from '../../store/toast'
-import { getProject, updateProject, exportProject } from '../../api/project'
-import type { Project } from '../../api/project'
-import { listChapters, createChapter, updateChapter, deleteChapter, exportChaptersBatch, exportChapters } from '../../api/chapter'
-import type { Chapter, CreateChapterRequest } from '../../api/chapter'
-import { getAsset, upsertAsset, exportAsset } from '../../api/asset'
-import { listTasks } from '../../api/task'
+import { exportProject } from '../../api/project'
+import { exportChaptersBatch, exportChapters } from '../../api/chapter'
+import type { CreateChapterRequest } from '../../api/chapter'
+import { exportAsset } from '../../api/asset'
+import { listTasks, getTask } from '../../api/task'
 import {
   generateArchitecture,
   generateDirectory,
@@ -17,35 +16,51 @@ import {
   generateDramaBatch,
 } from '../../api/generate'
 import {
-  listDramaEpisodes,
   exportEpisodeScript,
   exportEpisodesBatch,
-  updateEpisodeOutline,
-  updateSourceChapters,
 } from '../../api/drama'
-import type { DramaEpisode } from '../../api/drama'
 import AIChatDrawer from '../../components/AIChatDrawer'
 
 import OverviewTab from './OverviewTab'
 import ArchitectureTab from './ArchitectureTab'
 import DirectoryTab from './DirectoryTab'
+import WorldStateTab from './WorldStateTab'
 import ChaptersTab from './ChaptersTab'
 import DramaTab from './DramaTab'
 import { pollTask, downloadBlob } from './utils'
+import { useProjectData } from './useProjectData'
+import { queryClient } from '../../queryClient'
 
-type TabKey = 'overview' | 'architecture' | 'directory' | 'chapters' | 'drama'
+type TabKey = 'overview' | 'architecture' | 'directory' | 'chapters' | 'drama' | 'worldstate'
 
 function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [project, setProject] = useState<Project | null>(null)
-  const [chapters, setChapters] = useState<Chapter[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+
+  const {
+    project,
+    projectLoading,
+    projectError,
+    chapters,
+    architecture,
+    characters,
+    directory,
+    dramaEpisodes,
+    architectureLoading,
+    directoryLoading,
+    dramaLoading,
+    saveProject,
+    saveAsset,
+    addChapter,
+    updateChapter,
+    deleteChapter,
+    updateEpisode,
+    updateSource,
+  } = useProjectData(id)
 
   const urlTab = searchParams.get('tab') as TabKey
-  const initialTab: TabKey = ['overview', 'architecture', 'directory', 'chapters', 'drama'].includes(urlTab)
+  const initialTab: TabKey = ['overview', 'architecture', 'directory', 'chapters', 'drama', 'worldstate'].includes(urlTab)
     ? urlTab
     : 'overview'
   const [activeTab, setActiveTabState] = useState<TabKey>(initialTab)
@@ -56,6 +71,7 @@ function ProjectDetail() {
   const setActiveTab = (tab: TabKey) => {
     if (dirty && tab !== activeTab) {
       if (!confirm('您有未保存的修改，确定要切换吗？')) return
+      setDirty(false)
     }
     setActiveTabState(tab)
     setSearchParams({ tab }, { replace: true })
@@ -75,7 +91,6 @@ function ProjectDetail() {
 
   // Overview state
   const [editing, setEditing] = useState(false)
-  const [saving, setSaving] = useState(false)
   const [name, setName] = useState('')
   const [topic, setTopic] = useState('')
   const [genre, setGenre] = useState('')
@@ -84,14 +99,11 @@ function ProjectDetail() {
 
   // Architecture state
   const [architectureText, setArchitectureText] = useState('')
-  const [characterText, setCharacterText] = useState('')
-  const [architectureLoading, setArchitectureLoading] = useState(false)
   const [architectureSaving, setArchitectureSaving] = useState(false)
   const [architectureGenerating, setArchitectureGenerating] = useState(false)
 
   // Directory state
   const [directoryText, setDirectoryText] = useState('')
-  const [directoryLoading, setDirectoryLoading] = useState(false)
   const [directorySaving, setDirectorySaving] = useState(false)
   const [directoryGenerating, setDirectoryGenerating] = useState(false)
 
@@ -109,16 +121,12 @@ function ProjectDetail() {
     status: 'draft',
   })
   const [chapterSearchQuery, setChapterSearchQuery] = useState('')
+  const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(new Set())
 
   // Drama state
-  const [dramaEpisodes, setDramaEpisodes] = useState<DramaEpisode[]>([])
-  const [dramaLoading, setDramaLoading] = useState(false)
   const [dramaPlanGenerating, setDramaPlanGenerating] = useState(false)
   const [batchDramaGenerating, setBatchDramaGenerating] = useState(false)
   const [generatingDramaEpisodeNum, setGeneratingDramaEpisodeNum] = useState<number | null>(null)
-
-  // Export selection state
-  const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(new Set())
   const [selectedEpisodeIds, setSelectedEpisodeIds] = useState<Set<string>>(new Set())
 
   // Chapter selector modal state
@@ -128,236 +136,177 @@ function ProjectDetail() {
 
   // Active task progress tracking
   const [activeTask, setActiveTask] = useState<{ id: string; type: string; progress: number; status: string } | null>(null)
+  const pollCleanupRef = useRef<(() => void) | null>(null)
+  const [error, setError] = useState('')
+
+  // Sync query data to local editing state (only when not dirty)
+  useEffect(() => {
+    if (project && !dirty) {
+      setName(project.name)
+      setTopic(project.topic || '')
+      setGenre(project.genre || '')
+      setNumChapters(project.num_chapters)
+      setWordNumber(project.word_number)
+    }
+  }, [project, dirty])
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!id) return
-      try {
-        const [projectData, chaptersData] = await Promise.all([
-          getProject(id),
-          listChapters(id),
-        ])
-        setProject(projectData)
-        setName(projectData.name)
-        setTopic(projectData.topic || '')
-        setGenre(projectData.genre || '')
-        setNumChapters(projectData.num_chapters)
-        setWordNumber(projectData.word_number)
-        setChapters(chaptersData)
+    if (architecture && !dirty) {
+      setArchitectureText(architecture.content_text || '')
+    }
+  }, [architecture, dirty])
 
-        try {
-          const tasks = await listTasks(id)
-          const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
-          const runningTask = tasks.find(
-            (t) =>
-              (t.status === 'pending' || t.status === 'running') &&
-              t.created_at >= thirtyMinutesAgo
-          )
-          if (runningTask) {
-            setActiveTask({
-              id: runningTask.id,
-              type: runningTask.task_type,
-              progress: runningTask.progress,
-              status: runningTask.status,
-            })
-            if (runningTask.task_type === 'architecture') {
-              setArchitectureGenerating(true)
-            } else if (runningTask.task_type === 'directory') {
-              setDirectoryGenerating(true)
-            } else if (runningTask.task_type === 'chapter') {
-              const chNum = runningTask.params?.chapter_num
-              if (typeof chNum === 'number') {
-                setGeneratingChapterNum(chNum)
-              }
-            } else if (runningTask.task_type === 'batch_chapters') {
-              setBatchGenerating(true)
-            } else if (runningTask.task_type === 'drama_plan') {
-              setDramaPlanGenerating(true)
-            } else if (runningTask.task_type === 'drama_episode') {
-              const epNum = runningTask.params?.episode_num
-              if (typeof epNum === 'number') {
-                setGeneratingDramaEpisodeNum(epNum)
-              }
+  useEffect(() => {
+    if (directory && !dirty) {
+      setDirectoryText(directory.content_text || '')
+    }
+  }, [directory, dirty])
+
+  // Recover running tasks on mount
+  useEffect(() => {
+    if (!id) return
+    const recoverTask = async () => {
+      try {
+        const tasks = await listTasks(id)
+        const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+        const runningTask = tasks.find(
+          (t) =>
+            (t.status === 'pending' || t.status === 'running') &&
+            t.created_at >= thirtyMinutesAgo
+        )
+        if (runningTask) {
+          setActiveTask({
+            id: runningTask.id,
+            type: runningTask.task_type,
+            progress: runningTask.progress,
+            status: runningTask.status,
+          })
+          if (runningTask.task_type === 'architecture') {
+            setArchitectureGenerating(true)
+          } else if (runningTask.task_type === 'directory') {
+            setDirectoryGenerating(true)
+          } else if (runningTask.task_type === 'chapter') {
+            const chNum = runningTask.params?.chapter_num
+            if (typeof chNum === 'number') {
+              setGeneratingChapterNum(chNum)
             }
-            pollTask(
-              runningTask.id,
-              async () => {
-                setActiveTask(null)
-                setArchitectureGenerating(false)
-                setDirectoryGenerating(false)
-                setGeneratingChapterNum(null)
-                setBatchGenerating(false)
-                setDramaPlanGenerating(false)
-                setGeneratingDramaEpisodeNum(null)
-                if (runningTask.task_type === 'architecture' && id) {
-                  const asset = await getAsset(id, 'architecture')
-                  setArchitectureText(asset.content_text || '')
-                } else if (runningTask.task_type === 'directory' && id) {
-                  const asset = await getAsset(id, 'directory')
-                  setDirectoryText(asset.content_text || '')
-                  const updatedChapters = await listChapters(id)
-                  setChapters(updatedChapters)
-                } else if ((runningTask.task_type === 'chapter' || runningTask.task_type === 'batch_chapters') && id) {
-                  const updatedChapters = await listChapters(id)
-                  setChapters(updatedChapters)
-                } else if (runningTask.task_type.startsWith('drama') && id) {
-                  const episodes = await listDramaEpisodes(id)
-                  setDramaEpisodes(episodes)
-                }
-              },
-              (msg) => {
-                setError(`任务恢复后失败: ${msg}`)
-                setActiveTask(null)
-                setArchitectureGenerating(false)
-                setDirectoryGenerating(false)
-                setGeneratingChapterNum(null)
-                setBatchGenerating(false)
-                setDramaPlanGenerating(false)
-                setGeneratingDramaEpisodeNum(null)
-              },
-              (progress, status) => {
-                setActiveTask((prev) =>
-                  prev ? { ...prev, progress, status } : null
-                )
-              }
-            )
+          } else if (runningTask.task_type === 'batch_chapters') {
+            setBatchGenerating(true)
+          } else if (runningTask.task_type === 'drama_plan') {
+            setDramaPlanGenerating(true)
+          } else if (runningTask.task_type === 'drama_episode') {
+            const epNum = runningTask.params?.episode_num
+            if (typeof epNum === 'number') {
+              setGeneratingDramaEpisodeNum(epNum)
+            }
           }
-        } catch {
-          // ignore task list errors
+          pollCleanupRef.current?.()
+          pollCleanupRef.current = pollTask(
+            runningTask.id,
+            async () => {
+              setActiveTask(null)
+              setArchitectureGenerating(false)
+              setDirectoryGenerating(false)
+              setGeneratingChapterNum(null)
+              setBatchGenerating(false)
+              setDramaPlanGenerating(false)
+              setGeneratingDramaEpisodeNum(null)
+              if (runningTask.task_type === 'architecture' && id) {
+                queryClient.invalidateQueries({ queryKey: ['asset', id, 'architecture'] })
+                queryClient.invalidateQueries({ queryKey: ['asset', id, 'characters'] })
+              } else if (runningTask.task_type === 'directory' && id) {
+                queryClient.invalidateQueries({ queryKey: ['asset', id, 'directory'] })
+                queryClient.invalidateQueries({ queryKey: ['chapters', id] })
+              } else if ((runningTask.task_type === 'chapter' || runningTask.task_type === 'batch_chapters') && id) {
+                queryClient.invalidateQueries({ queryKey: ['chapters', id] })
+              } else if (runningTask.task_type.startsWith('drama') && id) {
+                queryClient.invalidateQueries({ queryKey: ['dramaEpisodes', id] })
+              }
+            },
+            (msg) => {
+              setError(`任务恢复后失败: ${msg}`)
+              setActiveTask(null)
+              setArchitectureGenerating(false)
+              setDirectoryGenerating(false)
+              setGeneratingChapterNum(null)
+              setBatchGenerating(false)
+              setDramaPlanGenerating(false)
+              setGeneratingDramaEpisodeNum(null)
+            },
+            (progress, status) => {
+              setActiveTask((prev) =>
+                prev ? { ...prev, progress, status } : null
+              )
+            }
+          )
         }
-      } catch (err: any) {
-        setError(err.response?.data?.detail || '获取数据失败')
-      } finally {
-        setLoading(false)
+      } catch {
+        // ignore task list errors
       }
     }
-    fetchData()
+    recoverTask()
+    return () => {
+      pollCleanupRef.current?.()
+      pollCleanupRef.current = null
+    }
   }, [id])
-
-  useEffect(() => {
-    if (activeTab !== 'architecture' || !id) return
-    const load = async () => {
-      setArchitectureLoading(true)
-      try {
-        const [archAsset, charAsset] = await Promise.all([
-          getAsset(id, 'architecture').catch((e: any) => {
-            if (e.response?.status === 404) return { content_text: '' }
-            throw e
-          }),
-          getAsset(id, 'characters').catch((e: any) => {
-            if (e.response?.status === 404) return { content_text: '' }
-            throw e
-          }),
-        ])
-        setArchitectureText(archAsset.content_text || '')
-        setCharacterText(charAsset.content_text || '')
-      } catch (err: any) {
-        if (err.response?.status !== 404) {
-          setError(err.response?.data?.detail || '获取架构/人物状态失败')
-        }
-      } finally {
-        setArchitectureLoading(false)
-      }
-    }
-    load()
-  }, [activeTab, id])
-
-  useEffect(() => {
-    if (activeTab !== 'directory' || !id) return
-    const load = async () => {
-      setDirectoryLoading(true)
-      try {
-        const asset = await getAsset(id, 'directory')
-        setDirectoryText(asset.content_text || '')
-      } catch (err: any) {
-        if (err.response?.status === 404) {
-          setDirectoryText('')
-        } else {
-          setError(err.response?.data?.detail || '获取目录失败')
-        }
-      } finally {
-        setDirectoryLoading(false)
-      }
-    }
-    load()
-  }, [activeTab, id])
-
-  useEffect(() => {
-    if (activeTab !== 'drama' || !id) return
-    const load = async () => {
-      setDramaLoading(true)
-      try {
-        const episodes = await listDramaEpisodes(id)
-        setDramaEpisodes(episodes)
-      } catch (err: any) {
-        setError(err.response?.data?.detail || '获取短剧列表失败')
-      } finally {
-        setDramaLoading(false)
-      }
-    }
-    load()
-  }, [activeTab, id])
-
-  useEffect(() => {
-    if (activeTab !== 'chapters' || !id) return
-    const load = async () => {
-      try {
-        const asset = await getAsset(id, 'directory')
-        setDirectoryText(asset.content_text || '')
-      } catch (err: any) {
-        if (err.response?.status === 404) {
-          setDirectoryText('')
-        }
-      }
-    }
-    load()
-  }, [activeTab, id])
 
   const handleSaveProject = async () => {
     if (!id) return
-    setSaving(true)
-    try {
-      const updated = await updateProject(id, {
+    saveProject.mutate(
+      {
         name,
         topic: topic || undefined,
         genre: genre || undefined,
         num_chapters: numChapters,
         word_number: wordNumber,
-      })
-      setProject(updated)
-      setEditing(false)
-      setDirty(false)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || '保存失败')
-    } finally {
-      setSaving(false)
-    }
+      },
+      {
+        onSuccess: () => {
+          setEditing(false)
+          setDirty(false)
+        },
+        onError: (err: any) => {
+          setError(err.response?.data?.detail || '保存失败')
+        },
+      }
+    )
   }
 
   const handleSaveArchitecture = async () => {
     if (!id) return
     setArchitectureSaving(true)
-    try {
-      await upsertAsset(id, 'architecture', { content_text: architectureText })
-      setDirty(false)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || '保存架构失败')
-    } finally {
-      setArchitectureSaving(false)
-    }
+    saveAsset.mutate(
+      { assetType: 'architecture', data: { content_text: architectureText } },
+      {
+        onSuccess: () => {
+          setDirty(false)
+          setArchitectureSaving(false)
+        },
+        onError: (err: any) => {
+          setError(err.response?.data?.detail || '保存架构失败')
+          setArchitectureSaving(false)
+        },
+      }
+    )
   }
 
   const handleSaveDirectory = async () => {
     if (!id) return
     setDirectorySaving(true)
-    try {
-      await upsertAsset(id, 'directory', { content_text: directoryText })
-      setDirty(false)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || '保存目录失败')
-    } finally {
-      setDirectorySaving(false)
-    }
+    saveAsset.mutate(
+      { assetType: 'directory', data: { content_text: directoryText } },
+      {
+        onSuccess: () => {
+          setDirty(false)
+          setDirectorySaving(false)
+        },
+        onError: (err: any) => {
+          setError(err.response?.data?.detail || '保存目录失败')
+          setDirectorySaving(false)
+        },
+      }
+    )
   }
 
   const handleGenerateArchitecture = async () => {
@@ -367,11 +316,12 @@ function ProjectDetail() {
       const task = await generateArchitecture(id)
       setError('')
       setActiveTask({ id: task.id, type: 'architecture', progress: 0, status: 'pending' })
-      pollTask(
+      pollCleanupRef.current?.()
+      pollCleanupRef.current = pollTask(
         task.id,
         async () => {
-          const asset = await getAsset(id, 'architecture')
-          setArchitectureText(asset.content_text || '')
+          queryClient.invalidateQueries({ queryKey: ['asset', id, 'architecture'] })
+          queryClient.invalidateQueries({ queryKey: ['asset', id, 'characters'] })
           setArchitectureGenerating(false)
           setActiveTask(null)
         },
@@ -398,15 +348,12 @@ function ProjectDetail() {
       const task = await generateDirectory(id)
       setError('')
       setActiveTask({ id: task.id, type: 'directory', progress: 0, status: 'pending' })
-      pollTask(
+      pollCleanupRef.current?.()
+      pollCleanupRef.current = pollTask(
         task.id,
         async () => {
-          const [asset, chaptersData] = await Promise.all([
-            getAsset(id, 'directory'),
-            listChapters(id),
-          ])
-          setDirectoryText(asset.content_text || '')
-          setChapters(chaptersData)
+          queryClient.invalidateQueries({ queryKey: ['asset', id, 'directory'] })
+          queryClient.invalidateQueries({ queryKey: ['chapters', id] })
           setDirectoryGenerating(false)
           setActiveTask(null)
         },
@@ -433,11 +380,11 @@ function ProjectDetail() {
       const task = await generateChapter(id, chapterNum)
       setError('')
       setActiveTask({ id: task.id, type: 'chapter', progress: 0, status: 'pending' })
-      pollTask(
+      pollCleanupRef.current?.()
+      pollCleanupRef.current = pollTask(
         task.id,
         async () => {
-          const chaptersData = await listChapters(id)
-          setChapters(chaptersData)
+          queryClient.invalidateQueries({ queryKey: ['chapters', id] })
           setGeneratingChapterNum(null)
           setActiveTask(null)
         },
@@ -464,13 +411,26 @@ function ProjectDetail() {
       const task = await generateBatchChapters(id)
       setError('')
       setActiveTask({ id: task.id, type: 'batch_chapters', progress: 0, status: 'pending' })
-      pollTask(
+      pollCleanupRef.current?.()
+      pollCleanupRef.current = pollTask(
         task.id,
         async () => {
-          const chaptersData = await listChapters(id)
-          setChapters(chaptersData)
+          queryClient.invalidateQueries({ queryKey: ['chapters', id] })
           setBatchGenerating(false)
           setActiveTask(null)
+          // 检查是否有失败章节
+          try {
+            const finalTask = await getTask(task.id)
+            const failed = finalTask.result?.failed_chapters as Array<{ chapter_num: number; error: string }> | undefined
+            if (failed && failed.length > 0) {
+              const nums = failed.map((f) => f.chapter_num).join(', ')
+              toast(`批量生成完成，但第 ${nums} 章生成失败`, 'warning')
+            } else {
+              toast('批量生成全部完成', 'success')
+            }
+          } catch {
+            // ignore
+          }
         },
         (msg) => {
           setError(`批量生成失败: ${msg}`)
@@ -495,11 +455,11 @@ function ProjectDetail() {
       const task = await generateDramaPlan(id)
       setError('')
       setActiveTask({ id: task.id, type: 'drama_plan', progress: 0, status: 'pending' })
-      pollTask(
+      pollCleanupRef.current?.()
+      pollCleanupRef.current = pollTask(
         task.id,
         async () => {
-          const episodes = await listDramaEpisodes(id)
-          setDramaEpisodes(episodes)
+          queryClient.invalidateQueries({ queryKey: ['dramaEpisodes', id] })
           setDramaPlanGenerating(false)
           setActiveTask(null)
         },
@@ -526,11 +486,11 @@ function ProjectDetail() {
       const task = await generateDramaEpisode(id, episodeNum, chapterNums)
       setError('')
       setActiveTask({ id: task.id, type: 'drama_episode', progress: 0, status: 'pending' })
-      pollTask(
+      pollCleanupRef.current?.()
+      pollCleanupRef.current = pollTask(
         task.id,
         async () => {
-          const episodes = await listDramaEpisodes(id)
-          setDramaEpisodes(episodes)
+          queryClient.invalidateQueries({ queryKey: ['dramaEpisodes', id] })
           setGeneratingDramaEpisodeNum(null)
           setActiveTask(null)
         },
@@ -558,7 +518,7 @@ function ProjectDetail() {
 
   const confirmChapterSelection = () => {
     if (!chapterSelectorTarget) return
-    const nums = Array.from(chapterSelectorSelected).sort((a, b) => a - b)
+    const nums = [...chapterSelectorSelected].sort((a, b) => a - b)
     setShowChapterSelector(false)
     handleGenerateDramaEpisode(chapterSelectorTarget.episodeNum, nums)
   }
@@ -570,11 +530,11 @@ function ProjectDetail() {
       const task = await generateDramaBatch(id)
       setError('')
       setActiveTask({ id: task.id, type: 'drama_batch', progress: 0, status: 'pending' })
-      pollTask(
+      pollCleanupRef.current?.()
+      pollCleanupRef.current = pollTask(
         task.id,
         async () => {
-          const episodes = await listDramaEpisodes(id)
-          setDramaEpisodes(episodes)
+          queryClient.invalidateQueries({ queryKey: ['dramaEpisodes', id] })
           setBatchDramaGenerating(false)
           setActiveTask(null)
         },
@@ -622,21 +582,21 @@ function ProjectDetail() {
   }
 
   const handleUpdateSourceChapters = async (episodeId: string, sourceChapters: string) => {
-    try {
-      const updated = await updateSourceChapters(episodeId, sourceChapters)
-      setDramaEpisodes((prev) => prev.map((ep) => (ep.id === episodeId ? updated : ep)))
-    } catch (err: any) {
-      setError(err.response?.data?.detail || '更新来源章节失败')
-    }
+    updateSource.mutate(
+      { episodeId, sourceChapters },
+      {
+        onError: (err: any) => setError(err.response?.data?.detail || '更新来源章节失败'),
+      }
+    )
   }
 
   const handleUpdateOutline = async (episodeId: string, outlineJson: Record<string, any>) => {
-    try {
-      const updated = await updateEpisodeOutline(episodeId, outlineJson)
-      setDramaEpisodes((prev) => prev.map((ep) => (ep.id === episodeId ? updated : ep)))
-    } catch (err: any) {
-      setError(err.response?.data?.detail || '更新大纲失败')
-    }
+    updateEpisode.mutate(
+      { episodeId, outlineJson },
+      {
+        onError: (err: any) => setError(err.response?.data?.detail || '更新大纲失败'),
+      }
+    )
   }
 
   const handleExportAsset = async (assetType: string, format: 'md' | 'json' = 'md') => {
@@ -680,37 +640,35 @@ function ProjectDetail() {
 
   const handleAddChapter = async () => {
     if (!id) return
-    try {
-      const newChapter = await createChapter(id, chapterForm)
-      setChapters([...chapters, newChapter])
-      setShowAddChapter(false)
-      setDirty(false)
-      resetChapterForm()
-    } catch (err: any) {
-      setError(err.response?.data?.detail || '创建章节失败')
-    }
+    addChapter.mutate(chapterForm, {
+      onSuccess: () => {
+        setShowAddChapter(false)
+        setDirty(false)
+        resetChapterForm()
+      },
+      onError: (err: any) => setError(err.response?.data?.detail || '创建章节失败'),
+    })
   }
 
   const handleUpdateChapter = async (chapterId: string) => {
-    try {
-      const updated = await updateChapter(chapterId, chapterForm)
-      setChapters(chapters.map((c) => (c.id === chapterId ? updated : c)))
-      setEditingChapterId(null)
-      setDirty(false)
-      resetChapterForm()
-    } catch (err: any) {
-      setError(err.response?.data?.detail || '更新章节失败')
-    }
+    updateChapter.mutate(
+      { chapterId, data: chapterForm },
+      {
+        onSuccess: () => {
+          setEditingChapterId(null)
+          setDirty(false)
+          resetChapterForm()
+        },
+        onError: (err: any) => setError(err.response?.data?.detail || '更新章节失败'),
+      }
+    )
   }
 
   const handleDeleteChapter = async (chapterId: string) => {
     if (!window.confirm('确定要删除这个章节吗？')) return
-    try {
-      await deleteChapter(chapterId)
-      setChapters(chapters.filter((c) => c.id !== chapterId))
-    } catch (err: any) {
-      setError(err.response?.data?.detail || '删除章节失败')
-    }
+    deleteChapter.mutate(chapterId, {
+      onError: (err: any) => setError(err.response?.data?.detail || '删除章节失败'),
+    })
   }
 
   const tabs: { key: TabKey; label: string }[] = [
@@ -719,12 +677,21 @@ function ProjectDetail() {
     { key: 'directory', label: '目录' },
     { key: 'chapters', label: '章节' },
     { key: 'drama', label: '短剧改编' },
+    { key: 'worldstate', label: '角色与世界' },
   ]
 
-  if (loading) {
+  if (projectLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <p className="text-gray-500">加载中...</p>
+      </div>
+    )
+  }
+
+  if (projectError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-500">{projectError.message || '获取数据失败'}</p>
       </div>
     )
   }
@@ -783,8 +750,8 @@ function ProjectDetail() {
         <div className="max-w-6xl mx-auto px-6 md:px-10 py-4">
           <div className="flex items-center space-x-2">
             {[
-              { key: 'architecture', label: '架构', done: !!architectureText },
-              { key: 'directory', label: '目录', done: !!directoryText },
+              { key: 'architecture', label: '架构', done: !!(architecture?.content_text) },
+              { key: 'directory', label: '目录', done: !!(directory?.content_text) },
               { key: 'chapters', label: '章节', done: chapters.some((c) => c.status === 'draft_generated' || c.status === 'finalized') },
               { key: 'drama', label: '短剧改编', done: dramaEpisodes.some((ep) => ep.status === 'script_ready') },
             ].map((step, idx, arr) => (
@@ -846,7 +813,7 @@ function ProjectDetail() {
         </div>
       </div>
 
-      <main className="max-w-6xl mx-auto py-8 px-6 md:px-10 space-y-6">
+      <main className={`mx-auto py-8 space-y-6 ${activeTab === 'chapters' ? 'max-w-[1400px] px-4' : 'max-w-6xl px-6 md:px-10'}`}>
         {error && (
           <div className="mb-4 p-4 bg-rose-50/80 text-rose-600 rounded-xl text-sm text-center font-medium">
             {error}
@@ -858,7 +825,7 @@ function ProjectDetail() {
             project={project}
             editing={editing}
             setEditing={setEditing}
-            saving={saving}
+            saving={saveProject.isPending}
             name={name}
             setName={setName}
             topic={topic}
@@ -876,14 +843,13 @@ function ProjectDetail() {
 
         {activeTab === 'architecture' && (
           <ArchitectureTab
-            architectureText={architectureText}
-            setArchitectureText={setArchitectureText}
-            characterText={characterText}
-            architectureLoading={architectureLoading}
-            architectureSaving={architectureSaving}
-            architectureGenerating={architectureGenerating}
+            value={architectureText}
+            onChange={(v) => { setArchitectureText(v); setDirty(true) }}
+            characterText={characters?.content_text || ''}
+            loading={architectureLoading}
+            saving={architectureSaving}
+            generating={architectureGenerating}
             activeTask={activeTask}
-            setDirty={setDirty}
             onSave={handleSaveArchitecture}
             onGenerate={handleGenerateArchitecture}
             onExport={() => handleExportAsset('architecture')}
@@ -892,13 +858,12 @@ function ProjectDetail() {
 
         {activeTab === 'directory' && (
           <DirectoryTab
-            directoryText={directoryText}
-            setDirectoryText={setDirectoryText}
-            directoryLoading={directoryLoading}
-            directorySaving={directorySaving}
-            directoryGenerating={directoryGenerating}
+            value={directoryText}
+            onChange={(v) => { setDirectoryText(v); setDirty(true) }}
+            loading={directoryLoading}
+            saving={directorySaving}
+            generating={directoryGenerating}
             activeTask={activeTask}
-            setDirty={setDirty}
             onSave={handleSaveDirectory}
             onGenerate={handleGenerateDirectory}
             onExport={() => handleExportAsset('directory')}
@@ -908,7 +873,7 @@ function ProjectDetail() {
         {activeTab === 'chapters' && (
           <ChaptersTab
             chapters={chapters}
-            directoryText={directoryText}
+            directoryText={directory?.content_text || ''}
             showAddChapter={showAddChapter}
             setShowAddChapter={setShowAddChapter}
             editingChapterId={editingChapterId}
@@ -963,6 +928,10 @@ function ProjectDetail() {
             onOpenChapterSelector={openChapterSelector}
             onExportEpisodesBatch={handleExportEpisodesBatch}
           />
+        )}
+
+        {activeTab === 'worldstate' && (
+          <WorldStateTab projectId={project!.id} chapters={chapters.map(c => ({ id: c.id, chapter_num: c.chapter_num, title: c.title }))} />
         )}
       </main>
 

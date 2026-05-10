@@ -22,6 +22,7 @@ from app.services.chat_service import (
     list_sessions,
     send_message,
 )
+from app.services.llm_config_service import resolve_llm_config
 
 router = APIRouter()
 
@@ -122,11 +123,13 @@ async def create_chat_message(
     current_user: User = Depends(get_current_user),
 ):
     try:
+        llm_config = await resolve_llm_config(str(current_user.id), db)
         assistant_message = await send_message(
             db,
             session_id=str(session_id),
             user_id=str(current_user.id),
             content=req.content,
+            llm_config=llm_config,
         )
         return assistant_message
     except ValueError as e:

@@ -28,12 +28,39 @@ from app.models.project import Project
 logger = logging.getLogger(__name__)
 
 
+def _make_adapter(temperature: float, llm_config: dict | None = None) -> object:
+    """Create LLM adapter from user config or platform defaults."""
+    if llm_config:
+        return create_llm_adapter(
+            interface_format=llm_config["interface_format"],
+            base_url=llm_config["base_url"],
+            model_name=llm_config["model"],
+            api_key=llm_config["api_key"],
+            temperature=temperature,
+            max_tokens=llm_config["max_tokens"],
+            timeout=llm_config["timeout"],
+        )
+    return create_llm_adapter(
+        interface_format=settings.LLM_INTERFACE_FORMAT,
+        base_url=settings.LLM_BASE_URL,
+        model_name=settings.LLM_MODEL,
+        api_key=settings.LLM_API_KEY,
+        temperature=temperature,
+        max_tokens=settings.LLM_MAX_TOKENS,
+        timeout=settings.LLM_TIMEOUT,
+    )
+
+
 async def _invoke_with_retry(adapter, prompt: str, max_retries: int = 3) -> str:
-    """调用 LLM，带重试和输出清洗"""
+    """调用 LLM，带重试和输出清洗（仅去除首尾 markdown 代码块标记，保留正文内容）"""
     for attempt in range(max_retries):
         try:
             result = await adapter.invoke(prompt)
-            cleaned = result.replace("```", "").strip()
+            cleaned = result.strip()
+            # 精确去除首尾的 markdown 代码块标记（如 ```json ... ```），保留中间所有内容
+            cleaned = re.sub(r"^```[\w]*\n?", "", cleaned)
+            cleaned = re.sub(r"\n?```\s*$", "", cleaned)
+            cleaned = cleaned.strip()
             if cleaned:
                 return cleaned
             logger.warning(f"Empty response on attempt {attempt + 1}")
@@ -47,247 +74,94 @@ async def _invoke_with_retry(adapter, prompt: str, max_retries: int = 3) -> str:
 async def generate_architecture(
     project: Project,
     user_guidance: str = "",
+    llm_config: dict | None = None,
 ) -> tuple[str, str]:
     """
     5 步架构生成 pipeline。
     返回：(architecture_text, character_state_text)
     """
-    if not settings.LLM_API_KEY:
+    if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key")):
         raise RuntimeError("LLM API key not configured")
 
-    adapter = create_llm_adapter(
-        interface_format=settings.LLM_INTERFACE_FORMAT,
-        base_url=settings.LLM_BASE_URL,
-        model_name=settings.LLM_MODEL,
-        api_key=settings.LLM_API_KEY,
-        temperature=0.3,
-        max_tokens=settings.LLM_MAX_TOKENS,
-        timeout=settings.LLM_TIMEOUT,
+    adapter = _make_adapter(temperature=0.3, llm_config=llm_config)
+
+    # Step 1: Core seed
+    prompt = core_seed_prompt.format(
+        topic=project.topic or "",
+        genre=project.genre or "",
+        number_of_chapters=project.num_chapters or 10,
+        word_number=project.word_number or 2000,
     )
+    core_seed = await _invoke_with_retry(adapter, prompt)
+    logger.info("Architecture step 1/5: Core seed generated")
 
-    topic = project.topic or ""
-    genre = project.genre or ""
-    number_of_chapters = project.num_chapters or 10
-    word_number = project.word_number or 2000
-
-    # Step1: 核心种子
-    logger.info("Step1: Generating core_seed_prompt ...")
-    prompt_core = core_seed_prompt.format(
-        topic=topic,
-        genre=genre,
-        number_of_chapters=number_of_chapters,
-        word_number=word_number,
-        user_guidance=user_guidance,
+    # Step 2: Character dynamics
+    prompt = character_dynamics_prompt.format(
+        user_guidance=user_guidance or "",
+        core_seed=core_seed,
     )
-    core_seed_result = await _invoke_with_retry(adapter, prompt_core)
-    if not core_seed_result:
-        raise RuntimeError("core_seed_prompt generation failed")
+    character_dynamics = await _invoke_with_retry(adapter, prompt)
+    logger.info("Architecture step 2/5: Character dynamics generated")
 
-    # Step2: 角色动力学
-    logger.info("Step2: Generating character_dynamics_prompt ...")
-    prompt_character = character_dynamics_prompt.format(
-        core_seed=core_seed_result,
-        user_guidance=user_guidance,
+    # Step 3: World building
+    prompt = world_building_prompt.format(
+        user_guidance=user_guidance or "",
+        core_seed=core_seed,
     )
-    character_dynamics_result = await _invoke_with_retry(adapter, prompt_character)
-    if not character_dynamics_result:
-        raise RuntimeError("character_dynamics_prompt generation failed")
+    world_building = await _invoke_with_retry(adapter, prompt)
+    logger.info("Architecture step 3/5: World building generated")
 
-    # Step3: 角色状态初始化
-    logger.info("Step3: Generating character_state ...")
-    prompt_char_state = create_character_state_prompt.format(
-        character_dynamics=character_dynamics_result,
+    # Step 4: Plot architecture
+    prompt = plot_architecture_prompt.format(
+        user_guidance=user_guidance or "",
+        core_seed=core_seed,
+        character_dynamics=character_dynamics,
+        world_building=world_building,
     )
-    character_state_result = await _invoke_with_retry(adapter, prompt_char_state)
-    if not character_state_result:
-        raise RuntimeError("create_character_state_prompt generation failed")
+    plot_architecture = await _invoke_with_retry(adapter, prompt)
+    logger.info("Architecture step 4/5: Plot architecture generated")
 
-    # Step4: 世界观
-    logger.info("Step4: Generating world_building_prompt ...")
-    prompt_world = world_building_prompt.format(
-        core_seed=core_seed_result,
-        user_guidance=user_guidance,
-    )
-    world_building_result = await _invoke_with_retry(adapter, prompt_world)
-    if not world_building_result:
-        raise RuntimeError("world_building_prompt generation failed")
-
-    # Step5: 三幕式情节
-    logger.info("Step5: Generating plot_architecture_prompt ...")
-    prompt_plot = plot_architecture_prompt.format(
-        core_seed=core_seed_result,
-        character_dynamics=character_dynamics_result,
-        world_building=world_building_result,
-        user_guidance=user_guidance,
-    )
-    plot_arch_result = await _invoke_with_retry(adapter, prompt_plot)
-    if not plot_arch_result:
-        raise RuntimeError("plot_architecture_prompt generation failed")
-
-    # Step6: 架构一致性校验（使用更低 temperature，确保审查严谨）
-    logger.info("Step6: Running architecture consistency check ...")
-    try:
-        check_adapter = create_llm_adapter(
-            interface_format=settings.LLM_INTERFACE_FORMAT,
-            base_url=settings.LLM_BASE_URL,
-            model_name=settings.LLM_MODEL,
-            api_key=settings.LLM_API_KEY,
-            temperature=0.2,
-            max_tokens=settings.LLM_MAX_TOKENS,
-            timeout=settings.LLM_TIMEOUT,
-        )
-        prompt_check = architecture_consistency_prompt.format(
-            core_seed=core_seed_result,
-            character_dynamics=character_dynamics_result,
-            character_state=character_state_result,
-            world_building=world_building_result,
-            plot_architecture=plot_arch_result,
-        )
-        check_result = await _invoke_with_retry(check_adapter, prompt_check)
-        if check_result and "INCONSISTENT" in check_result.upper():
-            logger.warning(f"Architecture consistency issues detected:\n{check_result}")
-        else:
-            logger.info("Architecture consistency check passed.")
-    except Exception as e:
-        logger.warning(f"Architecture consistency check failed (non-blocking): {e}")
-
-    # 组装最终架构文本
+    # Combine architecture text
     architecture_text = (
-        "#=== 0) 小说设定 ===\n"
-        f"主题：{topic},类型：{genre},篇幅：约{number_of_chapters}章（每章{word_number}字）\n\n"
-        "#=== 1) 核心种子 ===\n"
-        f"{core_seed_result}\n\n"
-        "#=== 2) 角色动力学 ===\n"
-        f"{character_dynamics_result}\n\n"
-        "#=== 3) 世界观 ===\n"
-        f"{world_building_result}\n\n"
-        "#=== 4) 三幕式情节架构 ===\n"
-        f"{plot_arch_result}\n"
+        f"【核心种子】\n{core_seed}\n\n"
+        f"【角色动力学】\n{character_dynamics}\n\n"
+        f"【世界观】\n{world_building}\n\n"
+        f"【情节架构】\n{plot_architecture}"
     )
 
-    logger.info("Architecture generation completed successfully.")
-    return architecture_text, character_state_result
+    # Step 5: Character state
+    prompt = create_character_state_prompt.format(
+        character_dynamics=character_dynamics,
+    )
+    character_state = await _invoke_with_retry(adapter, prompt)
+    logger.info("Architecture step 5/5: Character state generated")
 
-
-def parse_chapter_blueprint(blueprint_text: str) -> list[dict]:
-    """复用自 AI_NovelGenerator/chapter_directory_parser.py（增强版）"""
-    # 预处理：去掉 markdown 加粗标记 ** 和行首空白
-    cleaned_text = re.sub(r'\*\*', '', blueprint_text)
-    chunks = re.split(r'\n\s*\n', cleaned_text.strip())
-    results = []
-
-    # 多模式标题匹配（支持：第1章 - [标题] / 第1章：[标题] / 第1章 [标题] / 第1章-标题）
-    header_patterns = [
-        re.compile(r'^第\s*(\d+)\s*章\s*[-:]\s*\[?(.*?)\]?$'),
-        re.compile(r'^第\s*(\d+)\s*章\s+\[?(.*?)\]?$'),
-        re.compile(r'^第\s*(\d+)\s*章\s*[-:]\s*(.*?)$'),
-        re.compile(r'^Chapter\s*(\d+)\s*[-:]?\s*\[?(.*?)\]?$', re.IGNORECASE),
-    ]
-
-    role_pattern = re.compile(r'^本章定位[:：]\s*\[?(.*)\]?$')
-    purpose_pattern = re.compile(r'^核心作用[:：]\s*\[?(.*)\]?$')
-    suspense_pattern = re.compile(r'^悬念密度[:：]\s*\[?(.*)\]?$')
-    foreshadow_pattern = re.compile(r'^伏笔操作[:：]\s*\[?(.*)\]?$')
-    twist_pattern = re.compile(r'^认知颠覆[:：]\s*\[?(.*)\]?$')
-    summary_pattern = re.compile(r'^本章简述[:：]\s*\[?(.*)\]?$')
-
-    skipped_headers = []
-    for chunk in chunks:
-        lines = chunk.strip().splitlines()
-        if not lines:
-            continue
-        header_stripped = lines[0].strip()
-        header_match = None
-        for pattern in header_patterns:
-            header_match = pattern.match(header_stripped)
-            if header_match:
-                break
-        if not header_match:
-            skipped_headers.append(header_stripped)
-            continue
-        chapter_number = int(header_match.group(1))
-        chapter_title = header_match.group(2).strip()
-
-        chapter_role = chapter_purpose = suspense_level = ""
-        foreshadowing = plot_twist_level = chapter_summary = ""
-
-        for line in lines[1:]:
-            line_stripped = line.strip()
-            if not line_stripped:
-                continue
-            for pattern, key in [
-                (role_pattern, "role"),
-                (purpose_pattern, "purpose"),
-                (suspense_pattern, "suspense"),
-                (foreshadow_pattern, "foreshadow"),
-                (twist_pattern, "twist"),
-                (summary_pattern, "summary"),
-            ]:
-                m = pattern.match(line_stripped)
-                if m:
-                    val = m.group(1).strip()
-                    if key == "role":
-                        chapter_role = val
-                    elif key == "purpose":
-                        chapter_purpose = val
-                    elif key == "suspense":
-                        suspense_level = val
-                    elif key == "foreshadow":
-                        foreshadowing = val
-                    elif key == "twist":
-                        plot_twist_level = val
-                    elif key == "summary":
-                        chapter_summary = val
-                    break
-
-        results.append({
-            "chapter_number": chapter_number,
-            "chapter_title": chapter_title,
-            "chapter_role": chapter_role,
-            "chapter_purpose": chapter_purpose,
-            "suspense_level": suspense_level,
-            "foreshadowing": foreshadowing,
-            "plot_twist_level": plot_twist_level,
-            "chapter_summary": chapter_summary,
-        })
-
-    results.sort(key=lambda x: x["chapter_number"])
-    return results
+    return architecture_text, character_state
 
 
 async def generate_directory(
     project: Project,
-    architecture_text: str,
+    architecture_text: str = "",
     user_guidance: str = "",
+    llm_config: dict | None = None,
 ) -> tuple[str, list[dict]]:
     """
-    章节目录生成。
+    生成章节目录并解析。
     返回：(directory_text, parsed_chapters)
     """
-    if not settings.LLM_API_KEY:
+    if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key")):
         raise RuntimeError("LLM API key not configured")
 
-    adapter = create_llm_adapter(
-        interface_format=settings.LLM_INTERFACE_FORMAT,
-        base_url=settings.LLM_BASE_URL,
-        model_name=settings.LLM_MODEL,
-        api_key=settings.LLM_API_KEY,
-        temperature=0.3,
-        max_tokens=settings.LLM_MAX_TOKENS,
-        timeout=settings.LLM_TIMEOUT,
-    )
+    adapter = _make_adapter(temperature=0.3, llm_config=llm_config)
 
-    number_of_chapters = project.num_chapters or 10
-
-    logger.info("Generating chapter blueprint ...")
     prompt = chapter_blueprint_prompt.format(
-        novel_architecture=architecture_text,
-        number_of_chapters=number_of_chapters,
-        user_guidance=user_guidance,
+        user_guidance=user_guidance or "",
+        novel_architecture=architecture_text or "",
+        number_of_chapters=project.num_chapters or 10,
     )
     directory_text = await _invoke_with_retry(adapter, prompt)
     if not directory_text:
-        raise RuntimeError("chapter_blueprint_prompt generation failed")
+        raise RuntimeError("Directory generation failed")
 
     parsed_chapters = parse_chapter_blueprint(directory_text)
     if not parsed_chapters:
@@ -295,35 +169,72 @@ async def generate_directory(
             f"Directory parsing failed: no chapters extracted from LLM output. "
             f"Raw output preview: {directory_text[:500]}"
         )
-    if len(parsed_chapters) != number_of_chapters:
+    if len(parsed_chapters) != project.num_chapters:
         logger.warning(
-            f"Directory parsing mismatch: expected {number_of_chapters} chapters, "
+            f"Directory parsing mismatch: expected {project.num_chapters} chapters, "
             f"got {len(parsed_chapters)}. This may indicate format issues in LLM output."
         )
     logger.info(f"Directory generation completed: {len(parsed_chapters)} chapters parsed.")
     return directory_text, parsed_chapters
 
 
+def parse_chapter_blueprint(text: str) -> list[dict]:
+    """
+    解析章节蓝图文本，支持多种标题格式：
+    - 第1章 - [标题]
+    - 第1章 [标题]
+    - 第1章：标题
+    - Chapter 1
+    """
+    chapters = []
+
+    # 匹配 "第n章 - 标题" 或 "第n章 标题" 或 "第n章：标题"
+    patterns = [
+        r"第\s*(\d+)\s*章\s*[-–—]\s*(.+?)(?=第\s*\d+\s*章|\Z)",
+        r"第\s*(\d+)\s*章\s+(.+?)(?=第\s*\d+\s*章|\Z)",
+        r"第\s*(\d+)\s*章[：:]\s*(.+?)(?=第\s*\d+\s*章|\Z)",
+        r"Chapter\s+(\d+)\s*[-–—]?\s*(.+?)(?=Chapter\s+\d+|\Z)",
+    ]
+
+    for pattern in patterns:
+        matches = list(re.finditer(pattern, text, re.IGNORECASE | re.DOTALL))
+        if matches:
+            for m in matches:
+                chapter_num = int(m.group(1))
+                # 提取标题（取第一行或第一个有意义的短语）
+                title_block = m.group(2).strip()
+                title_lines = [l.strip() for l in title_block.splitlines() if l.strip()]
+                title = title_lines[0] if title_lines else f"第{chapter_num}章"
+                # 清理标题中可能的后续字段
+                title = re.split(r"[\n\r]", title)[0].strip()
+                title = re.sub(r"^(本章定位|核心作用|悬念密度|伏笔操作|认知颠覆|本章简述)[：:]", "", title).strip()
+
+                chapters.append({
+                    "chapter_number": chapter_num,
+                    "chapter_title": title,
+                    "chapter_summary": "",
+                })
+            if chapters:
+                break
+
+    # 按章节号排序
+    chapters.sort(key=lambda x: x["chapter_number"])
+    return chapters
+
+
 async def update_character_state(
     chapter_text: str,
     old_state: str,
+    llm_config: dict | None = None,
 ) -> str:
     """
     根据新完成的章节文本更新角色状态。
     返回：更新后的角色状态文档全文。
     """
-    if not settings.LLM_API_KEY:
+    if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key")):
         raise RuntimeError("LLM API key not configured")
 
-    adapter = create_llm_adapter(
-        interface_format=settings.LLM_INTERFACE_FORMAT,
-        base_url=settings.LLM_BASE_URL,
-        model_name=settings.LLM_MODEL,
-        api_key=settings.LLM_API_KEY,
-        temperature=0.3,
-        max_tokens=settings.LLM_MAX_TOKENS,
-        timeout=settings.LLM_TIMEOUT,
-    )
+    adapter = _make_adapter(temperature=0.3, llm_config=llm_config)
 
     prompt = update_character_state_prompt.format(
         chapter_text=chapter_text,
@@ -344,23 +255,17 @@ async def generate_chapter_draft(
     character_state_text: str = "",
     previous_chapter_draft: str | None = None,
     previous_chapter_summary: str = "",
+    world_state_summary: str = "",
+    llm_config: dict | None = None,
 ) -> str:
     """
     单章正文生成。
     返回：draft_text
     """
-    if not settings.LLM_API_KEY:
+    if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key")):
         raise RuntimeError("LLM API key not configured")
 
-    adapter = create_llm_adapter(
-        interface_format=settings.LLM_INTERFACE_FORMAT,
-        base_url=settings.LLM_BASE_URL,
-        model_name=settings.LLM_MODEL,
-        api_key=settings.LLM_API_KEY,
-        temperature=0.6,
-        max_tokens=settings.LLM_MAX_TOKENS,
-        timeout=settings.LLM_TIMEOUT,
-    )
+    adapter = _make_adapter(temperature=0.3, llm_config=llm_config)
 
     parsed_chapters = parse_chapter_blueprint(directory_text)
     current_chapter = None
@@ -378,6 +283,7 @@ async def generate_chapter_draft(
         prompt = first_chapter_draft_prompt.format(
             novel_setting=architecture_text,
             character_state=character_state_text or "（暂无角色状态记录）",
+            world_state_summary=world_state_summary or "（暂无世界状态摘要）",
             chapter_title=current_chapter["chapter_title"],
             chapter_summary=current_chapter["chapter_summary"],
             word_number=word_number,
@@ -389,7 +295,8 @@ async def generate_chapter_draft(
             excerpt = previous_chapter_draft[-1500:]
         prompt = next_chapter_draft_prompt.format(
             novel_setting=architecture_text,
-            character_state=character_state_text,
+            character_state=character_state_text or "（暂无角色状态记录）",
+            world_state_summary=world_state_summary or "（暂无世界状态摘要）",
             previous_chapter_summary=previous_chapter_summary or "（暂无前一章概要）",
             previous_chapter_excerpt=excerpt,
             chapter_number=chapter_num,
@@ -404,29 +311,191 @@ async def generate_chapter_draft(
     return draft_text
 
 
+def _parse_llm_json(content: str) -> dict | None:
+    """从 LLM 返回的文本中提取 JSON，支持 markdown code block"""
+    import json
+    if not content or not isinstance(content, str):
+        return None
+    cleaned = content.strip()
+    # 去掉开头的 json 标记
+    if cleaned.lower().startswith("json"):
+        cleaned = cleaned[4:].strip()
+    candidates = [cleaned]
+    # 提取 ```json ... ```
+    m = re.search(r'```json\s*([\s\S]*?)\s*```', content)
+    if m:
+        candidates.append(m.group(1).strip())
+    # 提取花括号内容
+    m = re.search(r'\{[\s\S]*\}', cleaned)
+    if m:
+        candidates.append(m.group().strip())
+    for candidate in candidates:
+        try:
+            result = json.loads(candidate)
+            if isinstance(result, dict):
+                return result
+        except Exception:
+            pass
+    return None
+
+
+async def extract_world_state_delta(
+    chapter_text: str,
+    chapter_number: int,
+    current_state: dict,
+    template: dict,
+    llm_config: dict | None = None,
+) -> dict:
+    """
+    从章节文本中提取世界状态变化（Delta）。
+    返回：结构化 delta dict
+    """
+    if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key")):
+        return {"changed_in_chapter": chapter_number, "no_changes": True}
+
+    from app.generator.prompts import extract_world_state_delta_prompt
+
+    adapter = _make_adapter(temperature=0.2, llm_config=llm_config)
+
+    prompt = extract_world_state_delta_prompt.format(
+        current_state=json.dumps(current_state, ensure_ascii=False, indent=2),
+        template_description=template.get("description", ""),
+        chapter_number=chapter_number,
+        chapter_text=chapter_text[:4000],  # 截断防止超限
+    )
+    logger.info(f"Extracting world state delta for chapter {chapter_number} ...")
+    raw = await _invoke_with_retry(adapter, prompt)
+    if not raw:
+        return {"changed_in_chapter": chapter_number, "no_changes": True}
+
+    delta = _parse_llm_json(raw)
+    if not delta:
+        logger.warning(f"Failed to parse world state delta JSON for chapter {chapter_number}")
+        return {"changed_in_chapter": chapter_number, "no_changes": True}
+
+    return delta
+
+
+def merge_world_state(old_state: dict, delta: dict) -> dict:
+    """
+    将 delta 合并到旧 world_state 中。
+    返回：更新后的 world_state
+    """
+    import copy
+    state = copy.deepcopy(old_state)
+    # 记录变更历史
+    chapter_num = delta.get("changed_in_chapter")
+    if "history" not in state:
+        state["history"] = []
+
+    if delta.get("no_changes"):
+        state["history"].append({"chapter": chapter_num, "changes": []})
+        return state
+
+    changed = []
+    # 深拷贝 delta 避免修改传入的参数
+    delta_copy = copy.deepcopy(delta)
+    for category in ["characters", "events", "world"]:
+        if category not in delta_copy:
+            continue
+        if category not in state:
+            state[category] = {}
+        for key, fields in delta_copy[category].items():
+            if key not in state[category]:
+                state[category][key] = {}
+            changed_fields = fields.pop("changed_fields", [])
+            for field, new_val in fields.items():
+                if field == "changed_fields":
+                    continue
+                old_val = state[category][key].get(field)
+                if old_val != new_val:
+                    changed.append({
+                        "chapter": chapter_num,
+                        "category": category,
+                        "entity": key,
+                        "field": field,
+                        "from": old_val,
+                        "to": new_val,
+                    })
+                state[category][key][field] = new_val
+
+    state["history"].append({"chapter": chapter_num, "changes": changed})
+    return state
+
+
+async def build_state_summary(
+    world_state: dict,
+    target_chapter: int,
+    chapter_title: str,
+    chapter_summary: str,
+    llm_config: dict | None = None,
+) -> str:
+    """
+    为后续章节生成提取最相关的世界状态摘要。
+    返回：摘要文本（条目列表）
+    """
+    if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key")):
+        return ""
+
+    from app.generator.prompts import build_state_summary_prompt
+
+    adapter = _make_adapter(temperature=0.2, llm_config=llm_config)
+
+    # 精简 world_state 减少 token
+    slim_state = {}
+    for k, v in world_state.items():
+        if k == "history":
+            # 只保留最近 3 章变更记录
+            slim_state[k] = v[-3:] if isinstance(v, list) else v
+        elif k in ("characters", "events", "world"):
+            # 限制每类最多 10 个条目，防止 token 超限
+            if isinstance(v, dict):
+                items = list(v.items())
+                if len(items) > 10:
+                    # 优先保留有变更历史的条目（最近 3 章内出现过）
+                    recent_entities = set()
+                    for h in world_state.get("history", [])[-3:]:
+                        for c in h.get("changes", []):
+                            if c.get("category") == k:
+                                recent_entities.add(c.get("entity"))
+                    # 先保留最近有变更的，再按字母顺序补足到 10 个
+                    prioritized = [(key, val) for key, val in items if key in recent_entities]
+                    remaining = [(key, val) for key, val in items if key not in recent_entities]
+                    slim_state[k] = dict(prioritized + remaining[: max(0, 10 - len(prioritized))])
+                else:
+                    slim_state[k] = v
+            else:
+                slim_state[k] = v
+        else:
+            slim_state[k] = v
+
+    prompt = build_state_summary_prompt.format(
+        world_state=json.dumps(slim_state, ensure_ascii=False, indent=2),
+        target_chapter=target_chapter,
+        chapter_title=chapter_title,
+        chapter_summary=chapter_summary,
+    )
+    logger.info(f"Building state summary for chapter {target_chapter} ...")
+    result = await _invoke_with_retry(adapter, prompt)
+    return result or ""
+
+
 async def check_chapter_consistency(
     chapter_text: str,
     character_state_text: str,
     previous_chapter_draft: str | None = None,
+    llm_config: dict | None = None,
 ) -> str:
     """
     审查新生成的章节是否与角色状态和前文情节一致。
     返回：检查结果文本（包含 CHECK: CONSISTENT 或 CHECK: INCONSISTENT）
     """
-    if not settings.LLM_API_KEY:
+    if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key")):
         return "CHECK: CONSISTENT (LLM not configured)"
 
     from app.generator.prompts import chapter_consistency_check_prompt
 
-    adapter = create_llm_adapter(
-        interface_format=settings.LLM_INTERFACE_FORMAT,
-        base_url=settings.LLM_BASE_URL,
-        model_name=settings.LLM_MODEL,
-        api_key=settings.LLM_API_KEY,
-        temperature=0.2,
-        max_tokens=settings.LLM_MAX_TOKENS,
-        timeout=settings.LLM_TIMEOUT,
-    )
+    adapter = _make_adapter(temperature=0.2, llm_config=llm_config)
 
     excerpt = previous_chapter_draft[-500:] if previous_chapter_draft else "（无前一章）"
     prompt = chapter_consistency_check_prompt.format(

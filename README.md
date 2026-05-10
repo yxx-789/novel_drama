@@ -17,7 +17,7 @@
 | 后端 | FastAPI + SQLAlchemy 2.0 + Alembic |
 | 数据库 | PostgreSQL 16 |
 | 缓存 | Redis 7 |
-| 任务队列 | 当前为 `asyncio.create_task`（待接入持久化队列） |
+| 任务队列 | Celery + Redis |
 
 ## 快速启动
 

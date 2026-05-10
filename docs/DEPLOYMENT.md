@@ -128,7 +128,14 @@ docker-compose exec backend alembic upgrade head
 
 ### Worker 未启动
 
-Railway 免费版单容器限制，如需 worker 需额外部署或使用 Railway 的 worker 服务。开发环境可用 docker-compose 同时启动 backend 和 worker。
+Celery worker 需要单独启动。开发环境：
+
+```bash
+cd backend
+celery -A app.worker.tasks worker --loglevel=info --pool=solo
+```
+
+生产环境（Railway）建议作为独立服务部署，或使用 Docker Compose 同时启动 backend 和 worker。
 
 ---
 

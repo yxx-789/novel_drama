@@ -30,7 +30,7 @@
   - `inspiration_service.build_inspiration_guidance()` 读取项目已导入的灵感资产，格式化为创作引导
   - 架构 / 目录生成任务（`run_architecture_task` / `run_directory_task`）在 LLM 生成前将引导注入 `user_guidance`
 
-- 全程前端/API 无「小红书」字样（`source` 仅存于数据库，不对外暴露）
+- 全程前端/API 不暴露热点来源平台（`source` 仅存于数据库，不对外暴露）
 
 ### 配置与模型（DeepSeek 接入）
 

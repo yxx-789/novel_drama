@@ -86,3 +86,6 @@ class McpClient:
             return json.loads(text)
         except (json.JSONDecodeError, TypeError):
             return text
+
+    def close(self) -> None:
+        self._session.close()

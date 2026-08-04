@@ -14,7 +14,9 @@ router = APIRouter()
 
 
 @router.get("/inspiration/categories")
-async def list_categories():
+async def list_categories(
+    current_user: User = Depends(get_current_user),
+):
     return get_preset_category_names()
 
 

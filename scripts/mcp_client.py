@@ -1,6 +1,5 @@
 """Defensive MCP Streamable-HTTP client for xiaohongshu-mcp（同步版）。"""
 import json
-import threading
 import time
 from typing import Any
 

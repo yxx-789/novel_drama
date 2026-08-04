@@ -1,8 +1,6 @@
 import asyncio
 from types import SimpleNamespace
 
-import pytest
-
 from app.services.inspiration_service import build_inspiration_guidance
 
 

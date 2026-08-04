@@ -612,6 +612,9 @@ class McpClient:
             return json.loads(text)
         except (json.JSONDecodeError, TypeError):
             return text
+
+    def close(self) -> None:
+        self._session.close()
 ```
 
 - [ ] **Step 2: 写采集器** `scripts/xhs_hot_collector.py`
@@ -674,7 +677,7 @@ def normalize_feeds(feeds: list[dict], category: str) -> list[dict]:
     return rows
 
 
-def upsert_hot_topics(rows: list[dict]) -> int:
+def upsert_hot_topics(rows: list[dict], fetched_at: str) -> int:
     conn = psycopg2.connect(DATABASE_URL)
     try:
         with conn.cursor() as cur:
@@ -682,7 +685,7 @@ def upsert_hot_topics(rows: list[dict]) -> int:
                 INSERT INTO hot_topics
                     (id, category, note_id, title, summary, likes, collects, shares, url, author, source, fetched_at)
                 VALUES (gen_random_uuid(), %(category)s, %(note_id)s, %(title)s, %(summary)s,
-                        %(likes)s, %(collects)s, %(shares)s, %(url)s, %(author)s, %(source)s, now())
+                        %(likes)s, %(collects)s, %(shares)s, %(url)s, %(author)s, %(source)s, %(fetched_at)s)
                 ON CONFLICT (note_id) DO UPDATE SET
                     likes = EXCLUDED.likes,
                     collects = EXCLUDED.collects,
@@ -691,6 +694,8 @@ def upsert_hot_topics(rows: list[dict]) -> int:
                     summary = EXCLUDED.summary,
                     fetched_at = EXCLUDED.fetched_at
             """
+            for row in rows:
+                row["fetched_at"] = fetched_at
             execute_batch(cur, sql, rows)
         conn.commit()
         return len(rows)
@@ -703,6 +708,9 @@ def collect_once() -> dict:
     client.connect()
     total = 0
     errors = []
+    # 单一批次共用一个时间戳：get_hot_notes 用 fetched_at == max(fetched_at) 圈"最近一批"，
+    # 必须保证同一批所有行 fetched_at 完全一致，否则过滤后只剩少数行。
+    batch_ts = datetime.now(timezone.utc).isoformat()
     try:
         for cat in PRESET_CATEGORIES:
             cat_rows: list[dict] = []
@@ -717,7 +725,7 @@ def collect_once() -> dict:
             cat_rows.sort(key=lambda r: r["likes"], reverse=True)
             cat_rows = cat_rows[:TOP_N_PER_CATEGORY]
             if cat_rows:
-                total += upsert_hot_topics(cat_rows)
+                total += upsert_hot_topics(cat_rows, batch_ts)
     finally:
         client.close()
     return {"total_upserted": total, "errors": errors}

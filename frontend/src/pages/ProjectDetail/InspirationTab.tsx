@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { getInspirationCategories, getHotNotes, importInspiration, HotNote } from '../../api/inspiration'
+import { queryClient } from '../../queryClient'
 import { useToastStore } from '../../store/toast'
 
 interface Props {
@@ -24,7 +25,10 @@ export default function InspirationTab({ projectId }: Props) {
 
   const importMut = useMutation({
     mutationFn: (note: HotNote) => importInspiration(projectId, note),
-    onSuccess: (data) => addToast(`已导入灵感：${data.topic}`, 'success'),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] })
+      addToast(`已导入灵感：${data.topic}`, 'success')
+    },
     onError: (err: any) => addToast(err?.response?.data?.detail || '导入失败', 'error'),
   })
 

@@ -39,9 +39,12 @@ def normalize_feeds(feeds: list[dict], category: str) -> list[dict]:
         title = note.get("title") or note.get("displayTitle") or ""
         if not title:
             continue
+        note_id = str(note.get("noteId") or note.get("feedId") or "")
+        if not note_id:
+            continue
         row = {
             "category": category,
-            "note_id": str(note.get("noteId") or note.get("feedId") or ""),
+            "note_id": note_id,
             "title": str(title)[:255],
             "summary": (note.get("desc") or note.get("summary") or "")[:2000],
             "likes": int((note.get("interactInfo") or {}).get("likedCount") or 0),
@@ -83,13 +86,13 @@ def upsert_hot_topics(rows: list[dict], fetched_at: str) -> int:
 
 def collect_once() -> dict:
     client = McpClient(XHS_MCP_URL)
-    client.connect()
     total = 0
     errors = []
     # 单一批次共用一个时间戳：get_hot_notes 用 fetched_at == max(fetched_at) 圈"最近一批"，
     # 必须保证同一批所有行 fetched_at 完全一致，否则过滤后只剩少数行。
     batch_ts = datetime.now(timezone.utc).isoformat()
     try:
+        client.connect()
         for cat in PRESET_CATEGORIES:
             cat_rows: list[dict] = []
             for kw in cat["keywords"]:

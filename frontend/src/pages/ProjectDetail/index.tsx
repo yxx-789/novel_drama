@@ -27,11 +27,12 @@ import DirectoryTab from './DirectoryTab'
 import WorldStateTab from './WorldStateTab'
 import ChaptersTab from './ChaptersTab'
 import DramaTab from './DramaTab'
+import InspirationTab from './InspirationTab'
 import { pollTask, downloadBlob } from './utils'
 import { useProjectData } from './useProjectData'
 import { queryClient } from '../../queryClient'
 
-type TabKey = 'overview' | 'architecture' | 'directory' | 'chapters' | 'drama' | 'worldstate'
+type TabKey = 'overview' | 'architecture' | 'directory' | 'chapters' | 'drama' | 'worldstate' | 'inspiration'
 
 function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
@@ -60,7 +61,7 @@ function ProjectDetail() {
   } = useProjectData(id)
 
   const urlTab = searchParams.get('tab') as TabKey
-  const initialTab: TabKey = ['overview', 'architecture', 'directory', 'chapters', 'drama', 'worldstate'].includes(urlTab)
+  const initialTab: TabKey = ['overview', 'architecture', 'directory', 'chapters', 'drama', 'worldstate', 'inspiration'].includes(urlTab)
     ? urlTab
     : 'overview'
   const [activeTab, setActiveTabState] = useState<TabKey>(initialTab)
@@ -678,6 +679,7 @@ function ProjectDetail() {
     { key: 'chapters', label: '章节' },
     { key: 'drama', label: '短剧改编' },
     { key: 'worldstate', label: '角色与世界' },
+    { key: 'inspiration', label: '创作灵感' },
   ]
 
   if (projectLoading) {
@@ -932,6 +934,10 @@ function ProjectDetail() {
 
         {activeTab === 'worldstate' && (
           <WorldStateTab projectId={project!.id} chapters={chapters.map(c => ({ id: c.id, chapter_num: c.chapter_num, title: c.title }))} />
+        )}
+
+        {activeTab === 'inspiration' && (
+          <InspirationTab projectId={project!.id} />
         )}
       </main>
 

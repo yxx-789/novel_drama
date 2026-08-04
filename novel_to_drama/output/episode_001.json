@@ -1,0 +1,539 @@
+{
+  "episode_num": 1,
+  "title": "心跳猎人",
+  "total_duration": "120 秒",
+  "total_shots": 38,
+  "scenes": [
+    {
+      "scene_num": 1,
+      "location": "夜店卡座",
+      "time": "夜",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨",
+        "银裙模特",
+        "红发调酒师"
+      ],
+      "mood": "迷幻、虚假",
+      "shots": [
+        {
+          "shot_num": 1,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "楚烨英俊的侧脸，被频闪灯不断切割。他嘴角挂着程式化的微笑。",
+          "action": "楚烨眼神冰冷地扫视全场。",
+          "dialogue": {
+            "speaker": "系统音",
+            "content": "爽文行为判定通过，生存点数+50。",
+            "emotion": "冰冷",
+            "note": "画外音"
+          },
+          "camera_movement": "推",
+          "audio": {
+            "bgm": "迷幻电子乐",
+            "sfx": [
+              "重低音鼓点",
+              "人群喧哗"
+            ]
+          }
+        },
+        {
+          "shot_num": 2,
+          "type": "中景",
+          "duration": "4 秒",
+          "visual": "楚烨左拥右抱，与两位美女互动。他的视网膜上，红色倒计时和红玫瑰投影清晰可见。",
+          "action": "楚烨慵懒地替红发调酒师拂去酒渍。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "迷幻电子乐",
+            "sfx": [
+              "女人笑声",
+              "酒杯碰撞声"
+            ]
+          }
+        },
+        {
+          "shot_num": 3,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "楚烨眉头微不可查地一皱，眼神瞬间锐利。",
+          "action": "楚烨身体不易察觉地僵硬了一下。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "紧张弦乐渐入",
+            "sfx": [
+              "脊椎刺痛音效"
+            ]
+          }
+        },
+        {
+          "shot_num": 4,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "楚烨不动声色地推开银裙模特的手，端起威士忌。",
+          "action": "他将酒一饮而尽。",
+          "dialogue": null,
+          "camera_movement": "摇",
+          "audio": {
+            "bgm": "紧张弦乐",
+            "sfx": [
+              "吞咽声",
+              "女人失望的轻呼"
+            ]
+          }
+        },
+        {
+          "shot_num": 5,
+          "type": "主观视角/远景",
+          "duration": "4 秒",
+          "visual": "穿过舞池人群，吧台尽头的阴影里，坐着穿深色风衣的沈清冷。",
+          "action": "楚烨的目光锁定她。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "紧张弦乐",
+            "sfx": [
+              "音乐渐弱"
+            ]
+          }
+        },
+        {
+          "shot_num": 6,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "楚烨起身，穿过舞池。",
+          "action": "他推开人群，径直走向吧台。",
+          "dialogue": null,
+          "camera_movement": "跟拍",
+          "audio": {
+            "bgm": "紧张弦乐",
+            "sfx": [
+              "脚步声",
+              "人群摩擦声"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 2,
+      "location": "夜店吧台",
+      "time": "夜",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨",
+        "沈清冷"
+      ],
+      "mood": "冰冷、对峙",
+      "shots": [
+        {
+          "shot_num": 7,
+          "type": "双人镜头",
+          "duration": "3 秒",
+          "visual": "楚烨在沈清冷身旁坐下。沈清冷面前一杯未动的苏打水。",
+          "action": "楚烨示意调酒师点单。沈清冷未转头。",
+          "dialogue": {
+            "speaker": "沈清冷",
+            "content": "你今晚的生存点数结算有异常波动。",
+            "emotion": "冰冷",
+            "note": "语气像刀刃"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "悬疑、冰冷",
+            "sfx": []
+          }
+        },
+        {
+          "shot_num": 8,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "楚烨接过苏打水，嘴角勾起玩味的笑。",
+          "action": "他喝了一口水。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "沈总亲自来查我的账？",
+            "emotion": "戏谑"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "悬疑、冰冷",
+            "sfx": [
+              "气泡声"
+            ]
+          }
+        },
+        {
+          "shot_num": 9,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "沈清冷偏过头，丹凤眼锐利如刀。",
+          "action": "她直视楚烨。",
+          "dialogue": {
+            "speaker": "沈清冷",
+            "content": "培养皿的心律紊乱，意味着基因锁裂了。",
+            "emotion": "警告"
+          },
+          "camera_movement": "推",
+          "audio": {
+            "bgm": "悬疑、冰冷",
+            "sfx": []
+          }
+        },
+        {
+          "shot_num": 10,
+          "type": "特写（手部）",
+          "duration": "2 秒",
+          "visual": "沈清冷戴着黑手套的右手握着水杯，中指与无名指在细微、不规律地颤抖。",
+          "action": "手部特写。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "悬疑、冰冷",
+            "sfx": [
+              "轻微电流音"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 3,
+      "location": "夜店吧台",
+      "time": "夜",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨",
+        "沈清冷"
+      ],
+      "mood": "试探、反转",
+      "shots": [
+        {
+          "shot_num": 11,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "楚烨身体倾向沈清冷，距离极近。",
+          "action": "他做出暧昧低语的姿态。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "也许是某个人的监视频率太高了。",
+            "emotion": "挑衅",
+            "note": "压低声音"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "紧张加剧",
+            "sfx": []
+          }
+        },
+        {
+          "shot_num": 12,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "沈清冷瞳孔收缩。她放下水杯，从风衣内袋取出一个透明小容器。",
+          "action": "她将容器推向楚烨。容器内是淡蓝色液体。",
+          "dialogue": {
+            "speaker": "沈清冷",
+            "content": "下周六晚宴，云顶区。你的基因数据将被评估。",
+            "emotion": "命令"
+          },
+          "camera_movement": "摇",
+          "audio": {
+            "bgm": "紧张加剧",
+            "sfx": [
+              "容器与吧台摩擦声"
+            ]
+          }
+        },
+        {
+          "shot_num": 13,
+          "type": "特写（手部）",
+          "duration": "2 秒",
+          "visual": "楚烨的手没有去拿容器，而是缓慢地覆在沈清冷颤抖的手上。",
+          "action": "楚烨握住她的手。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "沈总，你的手在抖。",
+            "emotion": "玩味、识破"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "紧张加剧",
+            "sfx": [
+              "心跳声"
+            ]
+          }
+        },
+        {
+          "shot_num": 14,
+          "type": "中景",
+          "duration": "2 秒",
+          "visual": "沈清冷猛地抽回手，透明容器被打翻。",
+          "action": "淡蓝色液体洒在餐巾纸上，发出刺鼻气味。",
+          "dialogue": null,
+          "camera_movement": "快速拉",
+          "audio": {
+            "bgm": "紧张加剧",
+            "sfx": [
+              "容器打翻声",
+              "液体溅出声"
+            ]
+          }
+        },
+        {
+          "shot_num": 15,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "沈清冷站起身，脸色冰冷。",
+          "action": "她头也不回地走向出口。",
+          "dialogue": {
+            "speaker": "沈清冷",
+            "content": "下周六，倒悬金字塔，二十一点。",
+            "emotion": "强装镇定"
+          },
+          "camera_movement": "跟拍（背影）",
+          "audio": {
+            "bgm": "悬疑、冰冷",
+            "sfx": [
+              "高跟鞋快步离开声"
+            ]
+          }
+        },
+        {
+          "shot_num": 16,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "楚烨低头看着吧台。被浸湿的餐巾纸残留着微弱的蓝色荧光。",
+          "action": "楚烨的手指轻轻划过发光的纸面。",
+          "dialogue": null,
+          "camera_movement": "推",
+          "audio": {
+            "bgm": "悬疑、冰冷",
+            "sfx": [
+              "微弱电流音",
+              "环境音消失"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 4,
+      "location": "胶囊公寓浴室",
+      "time": "夜",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨"
+      ],
+      "mood": "孤独、警觉",
+      "shots": [
+        {
+          "shot_num": 17,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "楚烨站在镜前，解开衬衫领口。",
+          "action": "他露出锁骨下方一道两厘米长的淡色疤痕。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "孤独、压抑",
+            "sfx": [
+              "衣服摩擦声"
+            ]
+          }
+        },
+        {
+          "shot_num": 18,
+          "type": "特写（疤痕）",
+          "duration": "2 秒",
+          "visual": "疤痕正在微微发烫，泛着极淡的红光。",
+          "action": "疤痕特写。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "孤独、压抑",
+            "sfx": [
+              "微弱警报音效"
+            ]
+          }
+        },
+        {
+          "shot_num": 19,
+          "type": "特写（面部）",
+          "duration": "3 秒",
+          "visual": "镜中楚烨的眼神疲惫，但瞳孔深处有东西在碎裂。",
+          "action": "他紧盯着镜中的自己。",
+          "dialogue": null,
+          "camera_movement": "推",
+          "audio": {
+            "bgm": "孤独、压抑",
+            "sfx": [
+              "沉重呼吸声"
+            ]
+          }
+        },
+        {
+          "shot_num": 20,
+          "type": "特写（通讯器屏幕）",
+          "duration": "3 秒",
+          "visual": "通讯器屏幕亮起，显示加密信息：“找到异常数据包，指向白家服务器。需面谈。——林夏”",
+          "action": "楚烨的拇指悬在回复键上方。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "紧张弦乐",
+            "sfx": [
+              "信息提示音",
+              "胸腔内红玫瑰剧烈颤动音效"
+            ]
+          }
+        },
+        {
+          "shot_num": 21,
+          "type": "特写（手部）",
+          "duration": "2 秒",
+          "visual": "楚烨的手猛地攥紧，指节发白。",
+          "action": "他将通讯器猛地塞回口袋，没有回复。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "紧张弦乐",
+            "sfx": [
+              "布料摩擦声"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 5,
+      "location": "胶囊公寓内",
+      "time": "夜",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨"
+      ],
+      "mood": "怀疑、危机",
+      "shots": [
+        {
+          "shot_num": 22,
+          "type": "特写（通讯器屏幕）",
+          "duration": "3 秒",
+          "visual": "通讯器再次震动，屏幕显示新消息：“明日上午十点，定期体检。——白黎医生”",
+          "action": "屏幕特写。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "不祥、低回",
+            "sfx": [
+              "信息提示音"
+            ]
+          }
+        },
+        {
+          "shot_num": 23,
+          "type": "快速闪回/特写",
+          "duration": "2 秒",
+          "visual": "画面快速闪过：白黎戴着金丝眼镜的温婉脸庞。",
+          "action": "她正用冰冷的针管抽血。",
+          "dialogue": null,
+          "camera_movement": "快速推",
+          "audio": {
+            "bgm": "不祥、低回",
+            "sfx": [
+              "抽血仪器音效"
+            ]
+          }
+        },
+        {
+          "shot_num": 24,
+          "type": "快速闪回/屏幕特写",
+          "duration": "2 秒",
+          "visual": "暗网拍卖页面闪过，商品描述：“高纯度端粒序列，基因特征吻合度99.8%”。",
+          "action": "页面快速划过。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "不祥、低回",
+            "sfx": [
+              "键盘敲击声",
+              "数据流声"
+            ]
+          }
+        },
+        {
+          "shot_num": 25,
+          "type": "特写（面部）",
+          "duration": "3 秒",
+          "visual": "楚烨眼神中的怀疑和危机感加剧。",
+          "action": "他闭了闭眼，再睁开时眼神锐利。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "不祥、低回",
+            "sfx": [
+              "心跳声加快"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 6,
+      "location": "胶囊公寓床上",
+      "time": "夜",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨"
+      ],
+      "mood": "绝望、决意",
+      "shots": [
+        {
+          "shot_num": 26,
+          "type": "主观视角/中景",
+          "duration": "4 秒",
+          "visual": "楚烨躺下，看着天花板投影的城市夜景（酸雨、霓虹）。视野右下角，系统倒计时跳动：72:14:33:07。红玫瑰投影几乎触及心脏。",
+          "action": "楚烨凝视着倒计时。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "空灵、绝望",
+            "sfx": [
+              "雨声",
+              "倒计时滴答声"
+            ]
+          }
+        },
+        {
+          "shot_num": 27,
+          "type": "特写（视网膜投影）",
+          "duration": "3 秒",
+          "visual": "特写楚烨眼中的倒计时和红玫瑰。生存点数显示：3850/4000。",
+          "action": "数字和玫瑰的投影在瞳孔中清晰可见。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "还差150点……",
+            "emotion": "低沉、自语"
+          },
+          "camera_movement": "推",
+          "audio": {
+            "bgm": "空灵、绝望",
+            "sfx": [
+              "倒计时滴答声加重",
+              "红玫瑰生长的沙沙声"
+            ]
+          }
+        },
+        {
+          "shot_num": 28,
+          "type": "特写（面部）",
+          "duration": "3 秒",
+          "visual": "楚烨闭上眼睛，眉头紧锁。",
+          "action": "他脸上闪过疲惫"
+        }
+      ]
+    }
+  ]
+}

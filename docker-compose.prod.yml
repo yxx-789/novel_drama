@@ -1,0 +1,90 @@
+# 生产编排：Nginx(:80) + PostgreSQL + Redis + 后端 + Celery Worker
+# 使用方式：docker compose -f docker-compose.prod.yml up -d --build
+# 密钥从根目录 .env 读取（gitignore，不会提交）：
+#   cp .env.production.example .env  然后填入真实值
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ai-novel-studio-prod-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ai_novel_studio
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-novel-studio-prod-redis
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai-novel-studio-prod-backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/ai_novel_studio
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
+      FERNET_SECRET: ${FERNET_SECRET:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+      LLM_INTERFACE_FORMAT: ${LLM_INTERFACE_FORMAT:-openai}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.7}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-8192}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-600}
+    # 默认 CMD：alembic upgrade head && supervisord（uvicorn + celery 一并启动）
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai-novel-studio-prod-worker
+    # 覆盖默认 CMD，只跑 Celery（迁移由 backend 容器负责）
+    command: celery -A app.worker.tasks worker --loglevel=info --pool=solo
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/ai_novel_studio
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
+      FERNET_SECRET: ${FERNET_SECRET:-}
+      LLM_INTERFACE_FORMAT: ${LLM_INTERFACE_FORMAT:-openai}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.7}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-8192}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-600}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ai-novel-studio-prod-web
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  pg_data:
+  redis_data:

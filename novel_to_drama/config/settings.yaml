@@ -1,0 +1,39 @@
+# Novel to Drama 配置
+
+llm:
+  provider: "baidu_qianfan"  # baidu_qianfan / openai
+  model: "glm-5.1"
+  
+  # 百度千帆配置
+  baidu_qianfan:
+    api_key: "bce-v3/ALTAK-vnASNnJZQkPchN6JShUdi/38e23c1484e3b2ab42e15dd596dc85fd4328caf4"
+    api_url: "https://qianfan.baidubce.com/v2"
+  
+  # OpenAI 配置（备用）
+  openai:
+    api_key: "${OPENAI_API_KEY}"
+    base_url: "https://api.openai.com/v1"
+
+drama:
+  # 短剧参数
+  episode_duration: 90  # 秒
+  max_scenes_per_episode: 8
+  max_shots_per_scene: 5
+  
+  # 压缩规则
+  compression_ratio:
+    action: 0.3  # 打斗场景压缩到 30%
+    dialogue: 0.8  # 对话保留 80%
+    emotion: 1.5  # 情绪场景扩展到 150%
+    
+  # 节奏控制
+  pacing:
+    hook_first_3s: true  # 开局必须有钩子
+    cliffhanger_last_5s: true  # 结尾必须有悬念
+    reversal_min: 2  # 每集至少 2 次反转
+
+output:
+  formats:
+    - markdown
+    - csv
+  output_dir: "./output"

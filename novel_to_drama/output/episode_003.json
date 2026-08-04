@@ -1,0 +1,523 @@
+{
+  "episode_num": 3,
+  "title": "禁忌坐标，归来者",
+  "total_duration": "125 秒",
+  "total_shots": 27,
+  "scenes": [
+    {
+      "scene_num": 1,
+      "location": "胶囊公寓",
+      "time": "黄昏",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨"
+      ],
+      "mood": "压抑，痛苦",
+      "shots": [
+        {
+          "shot_num": 1,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "楚烨的胸口。灰白皮肤与蓝色条形码交汇处，银灰色纹路如活物般剧烈涌动。",
+          "action": "楚烨猛地从床沿站起，身体因剧痛而摇晃。",
+          "dialogue": {
+            "speaker": "系统",
+            "content": "基因排异指数：28.6%。倒计时：68小时。",
+            "emotion": "机械"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "低频嗡鸣",
+            "sfx": [
+              "心跳声加剧",
+              "系统提示音"
+            ]
+          }
+        },
+        {
+          "shot_num": 2,
+          "type": "中景",
+          "duration": "4 秒",
+          "visual": "楚烨艰难地穿上深灰色高领衫，左肩衣物洇开一小片暗红血迹。",
+          "action": "楚烨咬紧牙关，手指微微颤抖地整理衣领。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "压抑弦乐",
+            "sfx": [
+              "衣物摩擦声",
+              "压抑的呼吸声"
+            ]
+          }
+        },
+        {
+          "shot_num": 3,
+          "type": "特写",
+          "duration": "4 秒",
+          "visual": "楚烨卷起裤脚，露出小腿内侧。三支注射器被胶带固定，液体颜色分明。",
+          "action": "楚烨用手指依次确认三支注射器的位置。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "临界点…备用…最后手段。",
+            "emotion": "决绝",
+            "note": "低声自语"
+          },
+          "camera_movement": "推镜头",
+          "audio": {
+            "bgm": "紧张弦乐",
+            "sfx": [
+              "手指摩擦皮肤声"
+            ]
+          }
+        },
+        {
+          "shot_num": 4,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "楚烨从内袋取出一个黑色小装置，检查指示灯。",
+          "action": "楚烨确认信号屏蔽器正常，将其塞回口袋。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "持续",
+            "sfx": [
+              "装置轻微启动声"
+            ]
+          }
+        },
+        {
+          "shot_num": 5,
+          "type": "远景",
+          "duration": "4 秒",
+          "visual": "楚烨拉开门，步入悬骨区黄昏的雨幕和霓虹中，背影决绝。",
+          "action": "楚烨头也不回地离开公寓。",
+          "dialogue": null,
+          "camera_movement": "拉镜头",
+          "audio": {
+            "bgm": "转悬疑",
+            "sfx": [
+              "关门声",
+              "远处雨声和霓虹电流声"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 2,
+      "location": "B-12层走廊/第三诊室门口",
+      "time": "夜",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨"
+      ],
+      "mood": "冰冷，压抑",
+      "shots": [
+        {
+          "shot_num": 6,
+          "type": "中景",
+          "duration": "4 秒",
+          "visual": "楚烨走在狭窄冰冷的走廊，墙壁泛着银色光泽，空气中弥漫消毒水味。",
+          "action": "楚烨步伐看似稳健，但呼吸短促浅快。",
+          "dialogue": null,
+          "camera_movement": "跟随摇镜头",
+          "audio": {
+            "bgm": "冰冷电子音",
+            "sfx": [
+              "空旷的脚步声",
+              "细微的呼吸声"
+            ]
+          }
+        },
+        {
+          "shot_num": 7,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "楚烨停在第三诊室门口，磨砂玻璃门透出昏黄灯光。",
+          "action": "楚烨深吸一口气，调整呼吸，眼神变得锐利。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "心跳声渐强",
+            "sfx": []
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 3,
+      "location": "第三诊室内",
+      "time": "夜",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨",
+        "白黎"
+      ],
+      "mood": "对峙，紧张",
+      "shots": [
+        {
+          "shot_num": 8,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "白黎站在检查台旁，白大褂一尘不染，面带职业微笑。",
+          "action": "白黎示意楚烨躺上检查台。",
+          "dialogue": {
+            "speaker": "白黎",
+            "content": "准时。请躺下。",
+            "emotion": "温和"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "转为平静但暗藏危机",
+            "sfx": []
+          }
+        },
+        {
+          "shot_num": 9,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "楚烨直视白黎的眼睛，没有动。",
+          "action": "楚烨嘴角紧绷。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "停药十六小时。数据够了吧？",
+            "emotion": "质问"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "弦乐微升",
+            "sfx": []
+          }
+        },
+        {
+          "shot_num": 10,
+          "type": "双人特写（过肩）",
+          "duration": "3 秒",
+          "visual": "白黎微笑不变，但眼神深处闪过一丝计算。",
+          "action": "白黎轻轻推了下金丝眼镜。",
+          "dialogue": {
+            "speaker": "白黎",
+            "content": "只是标准流程。",
+            "emotion": "平静"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "持续",
+            "sfx": []
+          }
+        },
+        {
+          "shot_num": 11,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "楚烨眼神更加锐利。",
+          "action": "楚烨向前逼近半步。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "暗网的端粒序列，也是流程？",
+            "emotion": "逼问"
+          },
+          "camera_movement": "推镜头",
+          "audio": {
+            "bgm": "紧张感骤升",
+            "sfx": [
+              "轻微吸气声（白黎）"
+            ]
+          }
+        },
+        {
+          "shot_num": 12,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "白黎的呼吸出现极其短暂的停滞（0.3秒），随即恢复。",
+          "action": "白黎的手指在医药箱上轻敲了一下。",
+          "dialogue": {
+            "speaker": "白黎",
+            "content": "我不明白你在说什么。",
+            "emotion": "依然平静",
+            "note": "语速微不可察地加快"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "持续",
+            "sfx": []
+          }
+        },
+        {
+          "shot_num": 13,
+          "type": "中景",
+          "duration": "4 秒",
+          "visual": "楚烨不再言语，猛地脱下高领衫，露出上身。灰白皮肤与蓝色条形码交汇，银灰色纹路隐现。",
+          "action": "楚烨将衣服扔在一旁，直视白黎。",
+          "dialogue": null,
+          "camera_movement": "拉镜头",
+          "audio": {
+            "bgm": "悬疑感增强",
+            "sfx": [
+              "衣物摩擦声"
+            ]
+          }
+        },
+        {
+          "shot_num": 14,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "白黎的目光扫过楚烨的身体，金丝眼镜后瞳孔微微收缩，流露出数据采集的欲望。",
+          "action": "白黎的视线在楚烨胸口纹路上停留。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "加入诡异电子音",
+            "sfx": []
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 4,
+      "location": "第三诊室内",
+      "time": "夜",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨",
+        "白黎"
+      ],
+      "mood": "惊异，突变",
+      "shots": [
+        {
+          "shot_num": 15,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "楚烨躺在检查台上。白黎手持扫描仪，眉头紧锁。",
+          "action": "白黎盯着扫描仪屏幕，手指快速滑动。",
+          "dialogue": {
+            "speaker": "白黎",
+            "content": "基因底层有异常编码。需要深度扫描。",
+            "emotion": "严肃",
+            "note": "语气试探"
+          },
+          "camera_movement": "摇镜头",
+          "audio": {
+            "bgm": "转为探究性音乐",
+            "sfx": [
+              "扫描仪嗡鸣声"
+            ]
+          }
+        },
+        {
+          "shot_num": 16,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "白黎手中拿着一支装有银色液体的注射器。",
+          "action": "白黎展示注射器。",
+          "dialogue": {
+            "speaker": "白黎",
+            "content": "注射造影剂。安全。",
+            "emotion": "安抚"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "持续",
+            "sfx": []
+          }
+        },
+        {
+          "shot_num": 17,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "楚烨看着注射器，嘴角勾起一丝极淡的弧度。",
+          "action": "楚烨微微点头。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "好。",
+            "emotion": "平静"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "音乐暂停一瞬",
+            "sfx": []
+          }
+        },
+        {
+          "shot_num": 18,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "针头刺入楚烨颈部静脉，银色液体注入。",
+          "action": "楚烨眉头微蹙。",
+          "dialogue": null,
+          "camera_movement": "推镜头",
+          "audio": {
+            "bgm": "诡异音效起",
+            "sfx": [
+              "注射声",
+              "液体流动声"
+            ]
+          }
+        },
+        {
+          "shot_num": 19,
+          "type": "大特写",
+          "duration": "3 秒",
+          "visual": "楚烨胸口的银灰色纹路被瞬间激活，剧烈发光、涌动，如活物般蔓延。",
+          "action": "楚烨的身体因体内变化而轻微痉挛。",
+          "dialogue": null,
+          "camera_movement": "极速推镜头",
+          "audio": {
+            "bgm": "激昂、混乱的电子音",
+            "sfx": [
+              "能量涌动声",
+              "扫描仪尖锐警报声"
+            ]
+          }
+        },
+        {
+          "shot_num": 20,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "白黎盯着扫描仪屏幕，脸上第一次露出震惊和困惑。",
+          "action": "白黎的手指停在屏幕上。",
+          "dialogue": {
+            "speaker": "白黎",
+            "content": "这不可能…",
+            "emotion": "惊异",
+            "note": "低声喃喃"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "持续混乱",
+            "sfx": [
+              "警报声持续"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 5,
+      "location": "第三诊室内",
+      "time": "夜",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨",
+        "白黎"
+      ],
+      "mood": "剧痛，决断，紧迫",
+      "shots": [
+        {
+          "shot_num": 21,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "楚烨表情因剧痛而扭曲，额头渗出冷汗。",
+          "action": "楚烨的手猛地攥紧检查台边缘。",
+          "dialogue": null,
+          "camera_movement": "晃动镜头（模拟痛感）",
+          "audio": {
+            "bgm": "转为激烈、痛苦的主题",
+            "sfx": [
+              "楚烨压抑的闷哼声",
+              "心跳声狂响"
+            ]
+          }
+        },
+        {
+          "shot_num": 22,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "白黎看向另一台监控屏，上面数字飙升：排异指数 40.3%。",
+          "action": "白黎转头急切地对楚烨说。",
+          "dialogue": {
+            "speaker": "白黎",
+            "content": "快注射稳定剂！",
+            "emotion": "急促"
+          },
+          "camera_movement": "快速切",
+          "audio": {
+            "bgm": "持续",
+            "sfx": [
+              "监控警报声"
+            ]
+          }
+        },
+        {
+          "shot_num": 23,
+          "type": "快速特写组合",
+          "duration": "4 秒",
+          "visual": "1.5秒：楚烨的手迅速伸向小腿。1秒：撕开胶带，拔出第一支注射器（淡青色液体）。1.5秒：针头刺入自己颈部。",
+          "action": "楚烨动作果断迅猛，抢在白黎阻止之前完成注射。",
+          "dialogue": null,
+          "camera_movement": "快速剪辑，手持跟拍",
+          "audio": {
+            "bgm": "节奏加快",
+            "sfx": [
+              "胶带撕裂声",
+              "注射器拔出声",
+              "注射声"
+            ]
+          }
+        },
+        {
+          "shot_num": 24,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "楚烨注射后，眼神瞬间清明，痛苦神色稍减。他利落地翻身下床。白黎伸手欲拦，但停在半空。",
+          "action": "楚烨挡在医药箱和白黎之间。",
+          "dialogue": {
+            "speaker": "白黎",
+            "content": "让开！你不知道后果！",
+            "emotion": "警告",
+            "note": "声音失去部分冷静"
+          },
+          "camera_movement": "拉镜头",
+          "audio": {
+            "bgm": "转为带有屏蔽感的空灵电子音",
+            "sfx": [
+              "世界背景音突然变得遥远模糊"
+            ]
+          }
+        },
+        {
+          "shot_num": 25,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "楚烨与白黎对视，灰白色的脸上是冰冷的决绝。",
+          "action": "楚烨转身冲向门口。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "我比你知道得多。",
+            "emotion": "坚定"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "空灵音持续",
+            "sfx": []
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 6,
+      "location": "B-12层走廊尽头/B-12-00门前",
+      "time": "夜",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨"
+      ],
+      "mood": "紧迫，神秘",
+      "shots": [
+        {
+          "shot_num": 26,
+          "type": "跟随中景",
+          "duration": "4 秒",
+          "visual": "楚烨在空旷走廊中奔跑，脚步声回荡。镜头掠过墙壁上“B-12-00”的隐蔽标识。",
+          "action": "楚烨奔向走廊尽头一扇无标识的厚重金属门。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "(内心OS，画外音) 十二分钟。",
+            "emotion": "紧迫"
+          },
+          "camera_movement": "跟随摇镜头"
+        }
+      ]
+    }
+  ]
+}

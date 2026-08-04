@@ -1,0 +1,508 @@
+{
+  "episode_num": 2,
+  "title": "赴死体检",
+  "total_duration": "120 秒",
+  "total_shots": 32,
+  "scenes": [
+    {
+      "scene_num": 1,
+      "location": "胶囊公寓",
+      "time": "凌晨",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨"
+      ],
+      "mood": "痛苦、压抑",
+      "shots": [
+        {
+          "shot_num": 1,
+          "type": "中景",
+          "duration": "4 秒",
+          "visual": "楚烨猛地从床上坐起，额头渗出冷汗，呼吸急促。",
+          "action": "他痛苦地捂住胸口，剧烈咳嗽，咳出几点血沫溅在床单上。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "低沉、不祥的电子音效",
+            "sfx": [
+              "急促喘息声",
+              "微弱咳血声"
+            ]
+          }
+        },
+        {
+          "shot_num": 2,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "镜中映出楚烨苍白、憔悴的脸。灰白色的诡异纹路正从他的颈部向脸颊蔓延。",
+          "action": "楚烨抬起手，指尖颤抖着触碰镜中自己脸上的纹路。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "持续的低频音效",
+            "sfx": [
+              "指尖划过镜面的细微声"
+            ]
+          }
+        },
+        {
+          "shot_num": 3,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "楚烨的视野右下角，系统提示面板弹出，红色数字刺眼。",
+          "action": "楚烨瞳孔微缩，盯着眼前的空气。",
+          "dialogue": {
+            "speaker": "系统提示音",
+            "content": "基因排异指数：21.3%...仍在持续上升。",
+            "emotion": "冰冷、机械",
+            "note": "电子合成音"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "同上",
+            "sfx": [
+              "系统提示音"
+            ]
+          }
+        },
+        {
+          "shot_num": 4,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "楚烨的手缓缓攥紧床单，指节因用力而发白。",
+          "action": "他深吸一口气，强忍痛苦，眼神从涣散逐渐聚焦，变得异常冷静。",
+          "dialogue": null,
+          "camera_movement": "缓慢推近",
+          "audio": {
+            "bgm": "音效转为更紧张、带有决心感的弦乐",
+            "sfx": [
+              "床单摩擦声"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 2,
+      "location": "胶囊公寓",
+      "time": "凌晨",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨"
+      ],
+      "mood": "警惕、决断",
+      "shots": [
+        {
+          "shot_num": 5,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "楚烨卷起裤腿，露出小腿内侧。",
+          "action": "他用手指摸索，从皮肤上撕下一段黑色胶带。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "紧张、悬疑",
+            "sfx": [
+              "撕扯胶带声"
+            ]
+          }
+        },
+        {
+          "shot_num": 6,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "三支没有标签、装着淡青色液体的注射器，被胶带整齐地绑在一起。",
+          "action": "楚烨用手指一一确认注射器的完整性，动作仔细而慎重。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "同上",
+            "sfx": [
+              "手指轻触玻璃管的细微声"
+            ]
+          }
+        },
+        {
+          "shot_num": 7,
+          "type": "中景",
+          "duration": "2 秒",
+          "visual": "楚烨将裤腿放下，遮住注射器。",
+          "action": "他动作利落，重新系好鞋带。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "同上",
+            "sfx": [
+              "布料摩擦声"
+            ]
+          }
+        },
+        {
+          "shot_num": 8,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "胶囊公寓的终端屏幕亮起，一条新消息弹出。发件人：白黎。",
+          "action": "楚烨的视线落在屏幕上。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "音效变得尖锐",
+            "sfx": [
+              "消息提示音"
+            ]
+          }
+        },
+        {
+          "shot_num": 9,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "消息内容清晰显示：“明晚19:00，B-12层第三诊室，请准时到达。记得停药。”",
+          "action": "楚烨盯着“记得停药”四个字，嘴角扯出一个极淡的冷笑。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "阴冷、算计的氛围音乐",
+            "sfx": []
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 3,
+      "location": "胶囊公寓",
+      "time": "凌晨",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨"
+      ],
+      "mood": "紧迫、冷静",
+      "shots": [
+        {
+          "shot_num": 10,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "楚烨的视野中央，一个半透明的生存点数面板弹出。",
+          "action": "楚烨面无表情地看着面板。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "紧迫的倒计时音效",
+            "sfx": [
+              "系统界面弹出音"
+            ]
+          }
+        },
+        {
+          "shot_num": 11,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "面板上显示：当前点数：420。暴毙阈值：4000。",
+          "action": "楚烨的眉头几不可察地皱了一下。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "同上",
+            "sfx": []
+          }
+        },
+        {
+          "shot_num": 12,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "楚烨站起身，望向窗外灰蒙蒙的悬骨区。",
+          "action": "他眼神锐利地扫过远处霓虹闪烁的“极乐场”招牌，深吸一口气，仿佛下定了某种决心。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "点数不够，就赚到够。",
+            "emotion": "决绝",
+            "note": "低声自语"
+          },
+          "camera_movement": "从楚烨摇向窗外的极乐场",
+          "audio": {
+            "bgm": "转为带有行动感的节奏鼓点",
+            "sfx": [
+              "远处模糊的都市噪音"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 4,
+      "location": "悬骨区栈桥公共终端",
+      "time": "清晨",
+      "interior_exterior": "外",
+      "characters": [
+        "楚烨"
+      ],
+      "mood": "震惊、悬疑",
+      "shots": [
+        {
+          "shot_num": 13,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "楚烨路过一个公共终端，脚步突然顿住。",
+          "action": "他猛地转头看向屏幕，瞳孔骤然收缩。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "突然中断，转为诡异的寂静",
+            "sfx": [
+              "脚步声停止"
+            ]
+          }
+        },
+        {
+          "shot_num": 14,
+          "type": "特写",
+          "duration": "4 秒",
+          "visual": "终端屏幕上闪过一行加密信息（以乱码形式出现，然后迅速解码成文字）。内容：“休眠代码第三层破解进度47%。发现异常时间戳。1999.12.31。”",
+          "action": "楚烨死死盯着那行日期。",
+          "dialogue": null,
+          "camera_movement": "快速推近至日期文字",
+          "audio": {
+            "bgm": "低沉、揭示真相般的管风琴音",
+            "sfx": [
+              "数据流解码的电子音"
+            ]
+          }
+        },
+        {
+          "shot_num": 15,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "楚烨脸上掠过一丝难以置信的表情，随即被更深的疑惑取代。",
+          "action": "他后退半步，手指无意识地收紧。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "1999年...在我出生前？",
+            "emotion": "震惊、低语",
+            "note": "几乎是气声"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "持续悬疑音效",
+            "sfx": []
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 5,
+      "location": "极乐场内部",
+      "time": "日",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨",
+        "陌生女人"
+      ],
+      "mood": "冷漠、疏离",
+      "shots": [
+        {
+          "shot_num": 16,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "楚烨站在舞池边，面无表情地看着嘈杂的人群。他脸色苍白，与周围环境格格不入。",
+          "action": "他端起一杯酒，一饮而尽，喉结滚动。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "极乐场喧闹的电子音乐",
+            "sfx": [
+              "人群喧哗声",
+              "酒杯碰撞声"
+            ]
+          }
+        },
+        {
+          "shot_num": 17,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "一个穿着暗红色风衣的陌生女人从楚烨身边经过，突然停下脚步。",
+          "action": "女人转过头，眼神迷离地看向楚烨，仿佛被什么吸引。",
+          "dialogue": null,
+          "camera_movement": "从楚烨摇向女人",
+          "audio": {
+            "bgm": "背景音乐中加入一丝不和谐、诱惑的旋律",
+            "sfx": []
+          }
+        },
+        {
+          "shot_num": 18,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "楚烨冷冷地瞥了女人一眼，眼神里没有任何温度。",
+          "action": "他毫不犹豫地转身，向门口走去。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "背景音乐瞬间恢复正常喧闹",
+            "sfx": []
+          }
+        },
+        {
+          "shot_num": 19,
+          "type": "特写",
+          "duration": "2 秒",
+          "visual": "楚烨的视野中，系统提示一闪而过：“纨绔任务完成。生存点数+5。”",
+          "action": "楚烨脚步未停，径直离开。",
+          "dialogue": null,
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "同上",
+            "sfx": [
+              "系统轻微提示音"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 6,
+      "location": "胶囊公寓",
+      "time": "夜",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨"
+      ],
+      "mood": "决绝、平静",
+      "shots": [
+        {
+          "shot_num": 20,
+          "type": "中景",
+          "duration": "4 秒",
+          "visual": "楚烨坐在床沿，面前摊开着几样东西：数据芯片、信号屏蔽器、一张写有“B-12-00”的纸片、三支注射器。",
+          "action": "他的手指依次点过这些物品，眼神专注，仿佛在脑中推演。",
+          "dialogue": null,
+          "camera_movement": "缓慢平移，展示物品",
+          "audio": {
+            "bgm": "冷静、逻辑性强的电子节拍",
+            "sfx": [
+              "手指轻敲桌面的声音"
+            ]
+          }
+        },
+        {
+          "shot_num": 21,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "楚烨拿起那张写着“B-12-00”禁忌坐标的纸片，凝视片刻。",
+          "action": "他将纸片紧紧攥在手心。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "第一步，体检。第二步，用药。第三步...去这里。",
+            "emotion": "冷静、自语",
+            "note": "声音平稳，像在念计划书"
+          },
+          "camera_movement": "推近至他攥紧的手",
+          "audio": {
+            "bgm": "节奏加快，带有目的性",
+            "sfx": [
+              "纸张摩擦声"
+            ]
+          }
+        },
+        {
+          "shot_num": 22,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "楚烨拿起一支无标签注射器，对着灯光看了看里面淡青色的液体。",
+          "action": "他的眼神变得异常锐利，仿佛透过液体看到了计划的终点。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "最后，让倒刺...刺穿这里。",
+            "emotion": "决绝",
+            "note": "手指轻轻点了一下自己的左胸心脏位置"
+          },
+          "camera_movement": "从注射器摇到楚烨的脸",
+          "audio": {
+            "bgm": "音乐达到一个小高潮，然后陡然变得空灵、宿命",
+            "sfx": []
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 7,
+      "location": "胶囊公寓",
+      "time": "夜",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨"
+      ],
+      "mood": "顿悟、宿命",
+      "shots": [
+        {
+          "shot_num": 23,
+          "type": "特写",
+          "duration": "4 秒",
+          "visual": "楚烨的手轻轻按在自己的左胸口。他的眼神深邃，仿佛在倾听体内的声音。",
+          "action": "他缓缓闭上眼睛，眉头微蹙，仿佛在思考一个难题。",
+          "dialogue": null,
+          "camera_movement": "极缓慢地推近",
+          "audio": {
+            "bgm": "空灵、带有回响的合成音",
+            "sfx": [
+              "微弱的心跳声被放大"
+            ]
+          }
+        },
+        {
+          "shot_num": 24,
+          "type": "特写",
+          "duration": "3 秒",
+          "visual": "楚烨睁开眼睛，眼中闪过一丝了然的光芒。",
+          "action": "他嘴角勾起一个极淡的、近乎讽刺的弧度。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "死刑判决...也是钥匙。",
+            "emotion": "顿悟、低语",
+            "note": "声音很轻，但清晰"
+          },
+          "camera_movement": "固定",
+          "audio": {
+            "bgm": "音效中加入一声悠远、模糊的叹息声（混在音乐中）",
+            "sfx": [
+              "那声神秘的叹息（环境音）"
+            ]
+          }
+        },
+        {
+          "shot_num": 25,
+          "type": "中景",
+          "duration": "3 秒",
+          "visual": "楚烨仿佛看到三个模糊的身影（沈清冷、林夏、白黎的剪影）在黑暗中注视着他。",
+          "action": "楚烨平静地回望那三个方向，没有任何退缩。",
+          "dialogue": {
+            "speaker": "楚烨",
+            "content": "都在等我这颗棋子...落下。",
+            "emotion": "平静、认命",
+            "note": "语气不带情绪"
+          },
+          "camera_movement": "镜头在楚烨和三个虚影间缓慢切换",
+          "audio": {
+            "bgm": "音乐变得宏大而悲壮",
+            "sfx": []
+          }
+        }
+      ]
+    },
+    {
+      "scene_num": 8,
+      "location": "胶囊公寓",
+      "time": "夜",
+      "interior_exterior": "内",
+      "characters": [
+        "楚烨"
+      ],
+      "mood": "平静、终极悬念",
+      "shots": [
+        {
+          "shot_num": 26,
+          "type": "中景",
+          "duration": ""
+        }
+      ]
+    }
+  ]
+}

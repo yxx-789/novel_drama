@@ -20,6 +20,7 @@ from app.services.generation_service import (
     update_character_state,
 )
 from app.generator.world_state_templates import get_template
+from app.services.inspiration_service import build_inspiration_guidance
 from app.services.llm_config_service import resolve_llm_config
 from app.services.project_service import get_project_by_id
 
@@ -120,6 +121,14 @@ async def run_architecture_task(task_id: uuid.UUID) -> None:
             if task.params and isinstance(task.params, dict):
                 user_guidance = task.params.get("user_guidance", "")
 
+            # 注入已导入灵感的创作引导
+            try:
+                guidance = await build_inspiration_guidance(db, str(task.project_id))
+                if guidance:
+                    user_guidance = f"{user_guidance}\n\n【创作灵感参考】\n{guidance}".strip()
+            except Exception as e:
+                logger.warning(f"Inspiration guidance injection failed: {e}")
+
             await update_task_status(db, task_id, "running", progress=30)
             architecture_text, character_state_text = await generate_architecture(
                 project, user_guidance=user_guidance, llm_config=llm_config
@@ -210,6 +219,14 @@ async def run_directory_task(task_id: uuid.UUID) -> None:
             user_guidance = ""
             if task.params and isinstance(task.params, dict):
                 user_guidance = task.params.get("user_guidance", "")
+
+            # 注入已导入灵感的创作引导
+            try:
+                guidance = await build_inspiration_guidance(db, str(task.project_id))
+                if guidance:
+                    user_guidance = f"{user_guidance}\n\n【创作灵感参考】\n{guidance}".strip()
+            except Exception as e:
+                logger.warning(f"Inspiration guidance injection failed: {e}")
 
             await update_task_status(db, task_id, "running", progress=40)
             directory_text, parsed_chapters = await generate_directory(

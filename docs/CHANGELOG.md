@@ -2,6 +2,36 @@
 
 ## [未发布]
 
+### 创作灵感功能
+
+- **hot_topics 热点表**
+  - Alembic migration `81909d23eb6a_add_hot_topics_table.py` 生成并成功应用
+  - 后端模型：`backend/app/models/inspiration.py` —— HotTopic（category / note_id / title / summary / likes / collects / shares / url / author / source / fetched_at）
+  - `note_id` 唯一约束 `uq_hot_topics_note_id`；`category`、`fetched_at` 建立索引
+  - 采集器按 `note_id` 幂等 upsert（`ON CONFLICT (note_id) DO UPDATE`）
+
+- **3 个灵感 API（均需 JWT 鉴权）**
+  - `GET /api/inspiration/categories` —— 返回预设灵感分类名列表（唯一真源：`backend/app/core/preset_categories.py`，32 个分类，采集器与后端共用）
+  - `GET /api/inspiration/hot` —— 返回最近一批（`fetched_at` 为最新批次）热点，按点赞降序；支持 `category` / `keyword` 过滤、`limit`（默认 20，上限 50）
+  - `POST /api/projects/{id}/inspiration` —— 一键导入：设为项目主题并写入 `inspiration` 资产（幂等覆盖），返回 `{success, topic}`
+  - `GET /api/inspiration/hot` 响应包含 note_id / title / summary / likes / collects / url / author / fetched_at，**不含 source 字段**
+
+- **热点采集器脚本（每日一次）**
+  - 新增 `scripts/xhs_hot_collector.py` —— 通过 MCP 服务搜索各分类关键词 → 规范化 → 批量 upsert 写入 `hot_topics`
+  - 新增 `scripts/mcp_client.py` —— MCP 客户端封装；`scripts/test_collector.py` —— 采集器测试
+  - 新增 `scripts/launchd.example.plist` —— 每日 8:30 定时执行示例
+
+- **前端「创作灵感」Tab**
+  - 新增 `frontend/src/api/inspiration.ts` —— 3 个 API 封装
+  - 新增 `frontend/src/pages/ProjectDetail/InspirationTab.tsx` —— 分类筛选 / 关键词搜索 / 刷新、热点列表、一键导入设主题
+  - `ProjectDetail/index.tsx` 新增 `inspiration` Tab（创作灵感）
+
+- **生成注入「创作灵感参考」**
+  - `inspiration_service.build_inspiration_guidance()` 读取项目已导入的灵感资产，格式化为创作引导
+  - 架构 / 目录生成任务（`run_architecture_task` / `run_directory_task`）在 LLM 生成前将引导注入 `user_guidance`
+
+- 全程前端/API 无「小红书」字样（`source` 仅存于数据库，不对外暴露）
+
 ### 配置与模型（DeepSeek 接入）
 
 - 平台默认 LLM 切换为 **DeepSeek**：

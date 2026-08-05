@@ -30,6 +30,7 @@ class Chapter(Base, UUIDMixin, TimestampMixin):
     outline: Mapped[str | None] = mapped_column(Text)
     draft: Mapped[str | None] = mapped_column(Text)
     finalized_text: Mapped[str | None] = mapped_column(Text)
+    actual_summary_json: Mapped[dict | None] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     version: Mapped[int] = mapped_column(Integer, default=1)
 

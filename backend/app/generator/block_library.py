@@ -22,6 +22,7 @@
 """
 
 import random
+import re
 
 # ======================================================================
 # 一、核心题材（12 个）
@@ -1635,13 +1636,51 @@ def _render_internal_flavor(config: dict) -> str:
     return "【内部风味】\n" + "\n".join(lines)
 
 
+def _shorten_fragment(fragment: str, max_sentences: int = 2) -> str:
+    """把 prompt_fragment 精简为前 max_sentences 句，控制多选维度拼接时的篇幅。
+
+    多选维度每项只取核心内容（氛围/卖点概述 1-2 句），避免多项全量拼接导致上下文臃肿。
+    """
+    text = fragment.strip()
+    if not text:
+        return ""
+    pieces = re.split(r"(?<=[。！？])", text)
+    pieces = [p.strip() for p in pieces if p.strip()]
+    if len(pieces) <= max_sentences:
+        return text
+    return "".join(pieces[:max_sentences])
+
+
+def _render_multi_select(dim: str, values: list) -> str:
+    """渲染多选维度（background/hook）为一段「写作上下文」。
+
+    逐项查积木块：命中项注入各 prompt_fragment 的核心内容（精简到 1-2 句）；
+    未知项（前端新选项/自由文本）降级为原文直述，避免丢失信息与崩溃。
+    """
+    lines = []
+    for value in values:
+        if not isinstance(value, str) or not value.strip():
+            continue
+        block = get_block(dim, value)
+        if block is not None:
+            label = block.get("label", value)
+            core = _shorten_fragment(str(block.get("prompt_fragment", "")))
+            lines.append(f"· {label}：{core}" if core else f"· {label}")
+        else:
+            lines.append(f"· {value.strip()}")
+    if not lines:
+        return ""
+    return f"【{DIMENSION_LABELS[dim]}】\n" + "\n".join(lines)
+
+
 def build_context(config: dict | None) -> str:
     """
     把 config 各维度的 prompt_fragment 拼成一段「写作上下文」文本。
 
     config 形如：
-      {"core_genre": "玄幻", "background": "宗门林立", "hook": "金手指系统", ...}
-    未知维度 / 未知选项会被忽略；用户自定义字段与剧情走向不在此处拼接
+      {"core_genre": "玄幻", "background": ["宗门林立", "大陆争霸"], "hook": ["金手指系统"], ...}
+    多选维度（background/hook）为数组时逐项查块、注入各 prompt_fragment 的核心内容；
+    未知维度 / 未知选项会被忽略或降级为原文直述；用户自定义字段与剧情走向不在此处拼接
     （剧情走向由创作意图环节单独高优先注入，保持职责正交）。
     """
     if not config:
@@ -1651,17 +1690,22 @@ def build_context(config: dict | None) -> str:
         option = config.get(dim)
         if not option:
             continue
-        block = get_block(dim, option)
-        if block is None:
-            # 前端可能传入新选项或自由文本，降级为原文直述，避免丢失信息
-            fragment = str(option).strip()
-            if not fragment:
-                continue
-            sections.append(f"【{DIMENSION_LABELS[dim]}】\n{fragment}")
+        if isinstance(option, list):
+            section = _render_multi_select(dim, option)
+            if section:
+                sections.append(section)
         else:
-            sections.append(
-                f"【{DIMENSION_LABELS[dim]}·{block['label']}】\n{block['prompt_fragment'].strip()}"
-            )
+            block = get_block(dim, option)
+            if block is None:
+                # 前端可能传入新选项或自由文本，降级为原文直述，避免丢失信息
+                fragment = str(option).strip()
+                if not fragment:
+                    continue
+                sections.append(f"【{DIMENSION_LABELS[dim]}】\n{fragment}")
+            else:
+                sections.append(
+                    f"【{DIMENSION_LABELS[dim]}·{block['label']}】\n{block['prompt_fragment'].strip()}"
+                )
         # 内部细粒度风味紧跟在核心题材之后，作为题材的细化
         if dim == "core_genre":
             flavor_section = _render_internal_flavor(config)

@@ -105,6 +105,65 @@ def test_build_context_unknown_option_fallback():
     assert "【目标受众·爽文快感】" in ctx
 
 
+# ---------- 3.5 多选维度（background / hook）数组值 ----------
+def test_build_context_background_array_injects_each_fragment():
+    # 背景为数组时，逐项注入各选项的 prompt_fragment 核心内容
+    config = {
+        "core_genre": "玄幻",
+        "background": ["宗门林立", "大陆争霸"],
+        "hook": ["金手指系统"],
+    }
+    ctx = build_context(config)
+    assert "【故事背景】" in ctx
+    for key in ("宗门林立", "大陆争霸"):
+        assert key in ctx
+        frag = BACKGROUND_BLOCKS[key]["prompt_fragment"]
+        assert frag[:20] in ctx, f"{key} 的 prompt_fragment 未注入上下文"
+
+
+def test_build_context_hook_array_injects_each_fragment():
+    # 卖点为数组时，逐项注入各选项的 prompt_fragment 核心内容
+    config = {
+        "core_genre": "都市",
+        "background": "都市霓虹",
+        "hook": ["打脸爽感", "扮猪吃虎"],
+    }
+    ctx = build_context(config)
+    assert "【核心卖点】" in ctx
+    for key in ("打脸爽感", "扮猪吃虎"):
+        assert key in ctx
+        frag = HOOK_BLOCKS[key]["prompt_fragment"]
+        assert frag[:20] in ctx, f"{key} 的 prompt_fragment 未注入上下文"
+    # 背景仍传字符串时走原单选逻辑
+    assert "【故事背景·都市霓虹】" in ctx
+
+
+def test_build_context_array_with_unknown_item_fallback():
+    # 数组中混入未知项（新选项/自由文本）不崩溃，且未知项降级为原文直述
+    config = {
+        "core_genre": "玄幻",
+        "background": ["宗门林立", "洪荒", "西游"],
+        "hook": ["金手指系统", "时间循环"],
+    }
+    ctx = build_context(config)
+    assert "【故事背景】" in ctx
+    assert "宗门林立" in ctx
+    for unknown in ("洪荒", "西游", "时间循环"):
+        assert unknown in ctx, f"未知项 {unknown} 应降级原文直述"
+    assert HOOK_BLOCKS["金手指系统"]["prompt_fragment"][:20] in ctx
+
+
+def test_build_context_array_order_follows_dimension_order():
+    # 多选数组段仍遵循 DIMENSION_ORDER：背景在卖点之前
+    config = {
+        "core_genre": "玄幻",
+        "background": ["宗门林立"],
+        "hook": ["金手指系统"],
+    }
+    ctx = build_context(config)
+    assert ctx.index("【故事背景") < ctx.index("【核心卖点")
+
+
 # ---------- 4. DEFAULT_RECIPES 覆盖全部核心题材 ----------
 def test_default_recipes_cover_all_core_genres():
     assert set(DEFAULT_RECIPES.keys()) == set(CORE_GENRES)

@@ -177,9 +177,9 @@ function ProjectCreate() {
     const config: Record<string, unknown> = {}
     if (plotDirection.trim()) config.plot_direction = plotDirection.trim()
     if (coreGenre) config.core_genre = coreGenre
-    // 多选维度串成「、」分隔字符串，避免后端 dict key 用 list 导致崩溃
-    if (background.length) config.background = background.join('、')
-    if (hooks.length) config.hook = hooks.join('、')
+    // 多选维度直接发数组，后端逐项查块注入各选项 prompt_fragment
+    if (background.length) config.background = background
+    if (hooks.length) config.hook = hooks
     if (structure) config.structure = structure
     if (style) config.style = style
     if (audience) config.audience = audience

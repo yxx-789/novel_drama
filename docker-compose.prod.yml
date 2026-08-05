@@ -7,6 +7,7 @@ services:
   db:
     image: postgres:16-alpine
     container_name: ai-novel-studio-prod-db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -22,6 +23,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: ai-novel-studio-prod-redis
+    restart: unless-stopped
     volumes:
       - redis_data:/data
 
@@ -30,6 +32,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: ai-novel-studio-prod-backend
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/ai_novel_studio
       REDIS_URL: redis://redis:6379/0
@@ -55,6 +58,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: ai-novel-studio-prod-worker
+    restart: unless-stopped
     # 覆盖默认 CMD，只跑 Celery（迁移由 backend 容器负责）
     command: celery -A app.worker.tasks worker --loglevel=info --pool=solo
     environment:
@@ -80,6 +84,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: ai-novel-studio-prod-web
+    restart: unless-stopped
     ports:
       - "80:80"
     depends_on:

@@ -18,6 +18,7 @@ async def create_project(
         genre=project_in.genre,
         num_chapters=project_in.num_chapters,
         word_number=project_in.word_number,
+        writing_config=project_in.writing_config,
         owner_id=str(owner_id),
     )
     db.add(project)

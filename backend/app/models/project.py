@@ -15,6 +15,7 @@ class Project(Base, UUIDMixin, TimestampMixin):
     word_number: Mapped[int] = mapped_column(Integer, default=0)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="draft")
+    writing_config: Mapped[dict | None] = mapped_column(JSONB)
 
     chapters: Mapped[list["Chapter"]] = relationship("Chapter", back_populates="project", cascade="all, delete-orphan")
     assets: Mapped[list["ProjectAsset"]] = relationship("ProjectAsset", back_populates="project", cascade="all, delete-orphan")

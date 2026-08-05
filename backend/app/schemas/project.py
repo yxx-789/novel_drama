@@ -10,6 +10,7 @@ class ProjectBase(BaseModel):
     genre: str | None = None
     num_chapters: int = 0
     word_number: int = 0
+    writing_config: dict | None = None
 
 
 class ProjectCreate(ProjectBase):
@@ -23,6 +24,7 @@ class ProjectUpdate(BaseModel):
     num_chapters: int | None = None
     word_number: int | None = None
     status: str | None = None
+    writing_config: dict | None = None
 
 
 class ProjectOut(ProjectBase):

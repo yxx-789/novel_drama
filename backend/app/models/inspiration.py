@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -22,4 +22,8 @@ class HotTopic(Base, UUIDMixin, TimestampMixin):
     url: Mapped[str | None] = mapped_column(String(512))
     author: Mapped[str | None] = mapped_column(String(128))
     source: Mapped[str] = mapped_column(String(32), default="xiaohongshu")
+    comment_count: Mapped[int] = mapped_column(Integer, default=0)
+    inspiration_hint: Mapped[str | None] = mapped_column(Text)
+    quality_score: Mapped[int] = mapped_column(Integer, default=0)
+    rank_score: Mapped[float] = mapped_column(Float, default=0.0)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)

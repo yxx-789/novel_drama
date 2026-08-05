@@ -1,10 +1,18 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { createProject } from '../api/project'
 import { importInspiration } from '../api/inspiration'
 import { queryClient } from '../queryClient'
 import { DIMENSION_OPTIONS, DIMENSION_LABELS, DEFAULT_RECIPES } from '../constants/blocks'
+import {
+  BACKGROUND_SYSTEMS,
+  GENRE_HARD_BACKGROUND,
+  backgroundSystem,
+  checkHardConflicts,
+  checkSoftWarnings,
+  type WritingConfig,
+} from '../constants/conflicts'
 
 interface CollapseSectionProps {
   title: string
@@ -42,9 +50,10 @@ interface ChipGroupProps {
   value: string | string[]
   multi?: boolean
   onChange: (v: string | string[]) => void
+  disabledOptions?: string[]
 }
 
-function ChipGroup({ options, value, multi = false, onChange }: ChipGroupProps) {
+function ChipGroup({ options, value, multi = false, onChange, disabledOptions = [] }: ChipGroupProps) {
   const selected = multi ? (value as string[]) : value ? [value as string] : []
   const toggle = (opt: string) => {
     if (multi) {
@@ -58,16 +67,20 @@ function ChipGroup({ options, value, multi = false, onChange }: ChipGroupProps) 
     <div className="flex flex-wrap gap-2">
       {options.map((opt) => {
         const on = selected.includes(opt)
+        const disabled = disabledOptions.includes(opt)
+        const cls = on
+          ? 'border-indigo-600 bg-indigo-600 text-white'
+          : disabled
+            ? 'border-gray-200 bg-gray-100 text-gray-300 cursor-not-allowed'
+            : 'border-gray-300 bg-white text-gray-700 hover:border-indigo-400'
         return (
           <button
             key={opt}
             type="button"
             onClick={() => toggle(opt)}
-            className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
-              on
-                ? 'border-indigo-600 bg-indigo-600 text-white'
-                : 'border-gray-300 bg-white text-gray-700 hover:border-indigo-400'
-            }`}
+            disabled={disabled}
+            title={disabled ? '该选项与当前选择冲突，不可选' : undefined}
+            className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${cls}`}
           >
             {opt}
           </button>
@@ -83,6 +96,29 @@ interface CustomFields {
   characterReq: string
   avoid: string
   freeNote: string
+}
+
+interface WritingState {
+  coreGenre: string
+  background: string[]
+  hooks: string[]
+  structure: string
+  style: string
+  audience: string
+  castScale: string
+}
+
+/** 把前端写作状态映射为与后端 writing_config 同构的检测用 config（缺省维度不出现）。 */
+const writingStateToConfig = (s: WritingState): WritingConfig => {
+  const c: WritingConfig = {}
+  if (s.coreGenre) c.core_genre = s.coreGenre
+  if (s.background.length) c.background = s.background
+  if (s.hooks.length) c.hook = s.hooks
+  if (s.structure) c.structure = s.structure
+  if (s.style) c.style = s.style
+  if (s.audience) c.audience = s.audience
+  if (s.castScale) c.cast_scale = s.castScale
+  return c
 }
 
 function ProjectCreate() {
@@ -134,26 +170,115 @@ function ProjectCreate() {
     (field: keyof CustomFields) => (e: React.ChangeEvent<HTMLTextAreaElement>) =>
       setCustom((prev) => ({ ...prev, [field]: e.target.value }))
 
-  const handleCoreGenreChange = (genre: string) => {
-    setCoreGenre(genre)
-    const recipe = DEFAULT_RECIPES[genre]
-    if (recipe) {
-      // 选题材自动带出默认配方
-      setBackground([recipe.background])
-      setHooks([recipe.hook])
-      setStructure(recipe.structure)
-      setStyle(recipe.style)
-      setAudience(recipe.audience)
-      setCastScale(recipe.cast_scale)
-    } else {
-      setBackground([])
-      setHooks([])
-      setStructure('')
-      setStyle('')
-      setAudience('')
-      setCastScale('')
+  /**
+   * 统一变更入口：先把「拟变更状态」转成 config 跑硬冲突/软警告检测。
+   * - 硬冲突 → 拒绝变更，在顶部提示冲突项；
+   * - 软警告 → 弹 confirm 询问是否继续（软冲突不阻断，用户确认后照常应用）。
+   */
+  const applyWritingState = (next: WritingState): void => {
+    const nextConfig = writingStateToConfig(next)
+    const hard = checkHardConflicts(nextConfig)
+    if (hard.length) {
+      setError(hard.join('\n'))
+      return
     }
+    const soft = checkSoftWarnings(nextConfig)
+    if (soft.length) {
+      const confirmed = window.confirm(soft.join('\n\n') + '\n\n是否继续？')
+      if (!confirmed) return
+    }
+    setError('')
+    setCoreGenre(next.coreGenre)
+    setBackground(next.background)
+    setHooks(next.hooks)
+    setStructure(next.structure)
+    setStyle(next.style)
+    setAudience(next.audience)
+    setCastScale(next.castScale)
   }
+
+  const handleCoreGenreChange = (genre: string) => {
+    const recipe = DEFAULT_RECIPES[genre]
+    const next: WritingState = recipe
+      ? {
+          coreGenre: genre,
+          background: [recipe.background],
+          hooks: [recipe.hook],
+          structure: recipe.structure,
+          style: recipe.style,
+          audience: recipe.audience,
+          castScale: recipe.cast_scale,
+        }
+      : { coreGenre: genre, background: [], hooks: [], structure: '', style: '', audience: '', castScale: '' }
+    applyWritingState(next)
+  }
+
+  const handleBackgroundChange = (v: string[]) =>
+    applyWritingState({ coreGenre, background: v, hooks, structure, style, audience, castScale })
+  const handleHooksChange = (v: string[]) =>
+    applyWritingState({ coreGenre, background, hooks: v, structure, style, audience, castScale })
+  const handleStructureChange = (v: string) =>
+    applyWritingState({ coreGenre, background, hooks, structure: v, style, audience, castScale })
+  const handleStyleChange = (v: string) =>
+    applyWritingState({ coreGenre, background, hooks, structure, style: v, audience, castScale })
+  const handleAudienceChange = (v: string) =>
+    applyWritingState({ coreGenre, background, hooks, structure, style, audience: v, castScale })
+  const handleCastScaleChange = (v: string) =>
+    applyWritingState({ coreGenre, background, hooks, structure, style, audience, castScale: v })
+
+  // 实时检测：硬冲突 / 软警告（仅 7 维，不含剧情走向关键词）
+  const hardWarnings = useMemo<string[]>(
+    () =>
+      checkHardConflicts(
+        writingStateToConfig({ coreGenre, background, hooks, structure, style, audience, castScale }),
+      ),
+    [coreGenre, background, hooks, structure, style, audience, castScale],
+  )
+  const softWarnings = useMemo<string[]>(
+    () =>
+      checkSoftWarnings(
+        writingStateToConfig({ coreGenre, background, hooks, structure, style, audience, castScale }),
+      ),
+    [coreGenre, background, hooks, structure, style, audience, castScale],
+  )
+
+  // 联动禁用：
+  //  - 背景：题材硬禁的世界系置灰 + 跨世界系（除中性山野）禁选
+  //  - 结构：精简卡司（独角戏/全员工具人）禁选群像交织
+  //  - 规模：结构选了群像交织时，反向禁选精简卡司
+  //  - 卖点：金手指系统 × 打脸爽感 互斥禁选
+  const disabledBackgroundOptions = useMemo<string[]>(() => {
+    const bannedSystems = new Set(coreGenre ? (GENRE_HARD_BACKGROUND[coreGenre] ?? []) : [])
+    const selectedNonNeutral = new Set(
+      background
+        .map((b) => backgroundSystem(b))
+        .filter((s): s is string => s !== null && !BACKGROUND_SYSTEMS[s].neutral),
+    )
+    return DIMENSION_OPTIONS.background.filter((opt) => {
+      const sys = backgroundSystem(opt)
+      if (!sys) return false
+      if (bannedSystems.has(sys)) return true
+      if (selectedNonNeutral.size > 0 && !BACKGROUND_SYSTEMS[sys].neutral && !selectedNonNeutral.has(sys)) {
+        return true
+      }
+      return false
+    })
+  }, [coreGenre, background])
+
+  const disabledStructureOptions = useMemo<string[]>(
+    () => (castScale === '独角戏' || castScale === '全员工具人' ? ['群像交织'] : []),
+    [castScale],
+  )
+  const disabledCastOptions = useMemo<string[]>(
+    () => (structure === '群像交织' ? ['独角戏', '全员工具人'] : []),
+    [structure],
+  )
+  const disabledHookOptions = useMemo<string[]>(() => {
+    const d: string[] = []
+    if (hooks.includes('金手指系统')) d.push('打脸爽感')
+    if (hooks.includes('打脸爽感')) d.push('金手指系统')
+    return d
+  }, [hooks])
 
   const mutation = useMutation({
     mutationFn: createProject,
@@ -203,13 +328,20 @@ function ProjectCreate() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    const config = buildWritingConfig()
+    // 提交前硬冲突检查：有则阻止提交并展示冲突项
+    const hard = checkHardConflicts(config)
+    if (hard.length) {
+      setError(hard.join('\n'))
+      return
+    }
     mutation.mutate({
       name,
       topic: topic || undefined,
       genre: coreGenre || undefined,
       num_chapters: numChapters,
       word_number: wordNumber,
-      writing_config: buildWritingConfig(),
+      writing_config: config,
     })
   }
 
@@ -334,13 +466,16 @@ function ProjectCreate() {
                       <div>
                         <label className={`${labelCls} mb-2 block`}>
                           {DIMENSION_LABELS.background}
-                          <span className="ml-2 text-xs font-normal text-gray-400">可多选</span>
+                          <span className="ml-2 text-xs font-normal text-gray-400">
+                            可多选；同世界系可选，跨系禁选（山野中性系除外）
+                          </span>
                         </label>
                         <ChipGroup
                           options={DIMENSION_OPTIONS.background}
                           value={background}
                           multi
-                          onChange={(v) => setBackground(v as string[])}
+                          disabledOptions={disabledBackgroundOptions}
+                          onChange={(v) => handleBackgroundChange(v as string[])}
                         />
                       </div>
 
@@ -353,7 +488,8 @@ function ProjectCreate() {
                           options={DIMENSION_OPTIONS.hook}
                           value={hooks}
                           multi
-                          onChange={(v) => setHooks(v as string[])}
+                          disabledOptions={disabledHookOptions}
+                          onChange={(v) => handleHooksChange(v as string[])}
                         />
                       </div>
 
@@ -362,7 +498,8 @@ function ProjectCreate() {
                         <ChipGroup
                           options={DIMENSION_OPTIONS.structure}
                           value={structure}
-                          onChange={(v) => setStructure(v as string)}
+                          disabledOptions={disabledStructureOptions}
+                          onChange={(v) => handleStructureChange(v as string)}
                         />
                       </div>
 
@@ -371,7 +508,7 @@ function ProjectCreate() {
                         <ChipGroup
                           options={DIMENSION_OPTIONS.style}
                           value={style}
-                          onChange={(v) => setStyle(v as string)}
+                          onChange={(v) => handleStyleChange(v as string)}
                         />
                       </div>
 
@@ -380,7 +517,7 @@ function ProjectCreate() {
                         <ChipGroup
                           options={DIMENSION_OPTIONS.audience}
                           value={audience}
-                          onChange={(v) => setAudience(v as string)}
+                          onChange={(v) => handleAudienceChange(v as string)}
                         />
                       </div>
 
@@ -389,9 +526,31 @@ function ProjectCreate() {
                         <ChipGroup
                           options={DIMENSION_OPTIONS.cast_scale}
                           value={castScale}
-                          onChange={(v) => setCastScale(v as string)}
+                          disabledOptions={disabledCastOptions}
+                          onChange={(v) => handleCastScaleChange(v as string)}
                         />
                       </div>
+
+                      {hardWarnings.length > 0 && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                          <p className="text-sm font-medium text-red-800">存在硬冲突，需调整后才能提交：</p>
+                          <ul className="mt-1 list-disc list-inside text-sm text-red-700 space-y-1">
+                            {hardWarnings.map((w, i) => (
+                              <li key={i}>{w}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {softWarnings.length > 0 && (
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+                          <p className="text-sm font-medium text-amber-800">软警告（可继续，但建议确认）：</p>
+                          <ul className="mt-1 list-disc list-inside text-sm text-amber-700 space-y-1">
+                            {softWarnings.map((w, i) => (
+                              <li key={i}>{w}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   </CollapseSection>
                 </div>

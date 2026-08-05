@@ -1,4 +1,5 @@
 """小红书热点采集器：每天把热点写入 hot_topics 表。独立运行，不参与 Web 服务。"""
+import ast
 import json
 import os
 import sys
@@ -31,27 +32,48 @@ def _find_list(value: Any, key: str) -> list[dict]:
     return []
 
 
+def _parse_note_card(note_card: Any) -> dict:
+    """xiaohongshu-mcp 的 search 结果把 noteCard 作为 Python dict 字面量字符串返回，解析成 dict。"""
+    if isinstance(note_card, dict):
+        return note_card
+    if isinstance(note_card, str):
+        try:
+            parsed = ast.literal_eval(note_card)
+            return parsed if isinstance(parsed, dict) else {}
+        except (ValueError, SyntaxError):
+            return {}
+    return {}
+
+
 def normalize_feeds(feeds: list[dict], category: str) -> list[dict]:
-    """把 MCP search 返回的 feeds 规范成入库行。"""
+    """把 MCP search 返回的 feeds 规范成入库行。
+
+    真实结构（xiaohongshu-mcp search_feeds）：
+      { "id": "68c0032c...", "xsecToken": "...", "noteCard": "{'type':'normal','displayTitle':...,'user':{...},'interactInfo':{...}}" }
+    note_id 在顶层 `id`；标题/点赞/作者都嵌在 `noteCard`（字符串）。点赞数为字符串。
+    """
     rows = []
     for f in feeds:
         note = f if isinstance(f, dict) else {}
-        title = note.get("title") or note.get("displayTitle") or ""
-        if not title:
-            continue
-        note_id = str(note.get("noteId") or note.get("feedId") or "")
+        note_id = str(note.get("id") or note.get("noteId") or note.get("feedId") or "")
         if not note_id:
             continue
+        card = _parse_note_card(note.get("noteCard"))
+        title = card.get("displayTitle") or card.get("title") or note.get("title") or ""
+        if not title:
+            continue
+        interact = card.get("interactInfo") or {}
+        user = card.get("user") or {}
         row = {
             "category": category,
-            "note_id": note_id,
+            "note_id": note_id[:64],
             "title": str(title)[:255],
-            "summary": (note.get("desc") or note.get("summary") or "")[:2000],
-            "likes": int((note.get("interactInfo") or {}).get("likedCount") or 0),
-            "collects": int((note.get("interactInfo") or {}).get("collectedCount") or 0),
-            "shares": int((note.get("interactInfo") or {}).get("shareCount") or 0),
-            "url": note.get("url") or "",
-            "author": (note.get("user") or {}).get("nickname") or "",
+            "summary": (card.get("desc") or card.get("summary") or "")[:2000],
+            "likes": int(interact.get("likedCount") or 0),
+            "collects": int(interact.get("collectedCount") or 0),
+            "shares": int(interact.get("sharedCount") or interact.get("shareCount") or 0),
+            "url": f"https://www.xiaohongshu.com/explore/{note_id}",
+            "author": (user.get("nickname") or user.get("nickName") or "")[:128],
             "source": "xiaohongshu",
         }
         rows.append(row)

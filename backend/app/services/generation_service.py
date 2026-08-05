@@ -30,23 +30,29 @@ from app.models.project import Project
 logger = logging.getLogger(__name__)
 
 
+# 用户未填写剧情走向时的占位符兜底文本，保证 prompt 的【创作意图】段始终有内容、不悬空
+_NO_CREATIVE_INTENT_PLACEHOLDER = "（用户未填写创作意图）"
+
+
 def _prompt_context_for_project(project: Project) -> tuple[str, str]:
     """
     从 project.writing_config 提取 prompt 注入内容。
 
     返回 (writing_context, creative_intent)：
     - writing_context：由积木库 build_context 把用户各维度选择拼成的「写作上下文」。
-    - creative_intent：用户填写的剧情走向，作为高优先「创作意图」。
+    - creative_intent：用户填写的剧情走向，作为高优先「创作意图」；
+      未填写（缺失 / 非字符串 / 空白）时回退为占位符兜底文本，避免【创作意图】段悬空。
 
-    旧项目没有 writing_config 时两者均回退为空串，生成行为与改造前一致。
+    旧项目没有 writing_config 时 writing_context 回退为空串，生成行为与改造前一致；
+    creative_intent 一律返回占位符兜底文本，保证各生成 prompt 的【创作意图】段不悬空。
     """
     writing_config = getattr(project, "writing_config", None)
     if not isinstance(writing_config, dict):
-        return "", ""
+        return "", _NO_CREATIVE_INTENT_PLACEHOLDER
     writing_context = build_context(writing_config)
     creative_intent = writing_config.get("plot_direction")
-    if not isinstance(creative_intent, str):
-        creative_intent = ""
+    if not isinstance(creative_intent, str) or not creative_intent.strip():
+        return writing_context, _NO_CREATIVE_INTENT_PLACEHOLDER
     return writing_context, creative_intent.strip()
 
 

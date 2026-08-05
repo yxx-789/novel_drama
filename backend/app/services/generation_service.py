@@ -291,6 +291,17 @@ async def update_character_state(
     return new_state
 
 
+def _chapter_excerpt(draft: str | None) -> str:
+    """取章节结尾做衔接上下文：结尾 20%，下限 800 字，上限 2000 字。"""
+    if not draft:
+        return ""
+    length = len(draft)
+    if length <= 800:
+        return draft
+    window = max(800, min(2000, int(length * 0.2)))
+    return draft[-window:]
+
+
 async def generate_chapter_draft(
     project: Project,
     chapter_num: int,
@@ -337,9 +348,7 @@ async def generate_chapter_draft(
         )
     else:
         logger.info(f"Generating chapter {chapter_num} draft ...")
-        excerpt = ""
-        if previous_chapter_draft:
-            excerpt = previous_chapter_draft[-1500:]
+        excerpt = _chapter_excerpt(previous_chapter_draft)
         prompt = next_chapter_draft_prompt.format(
             novel_setting=architecture_text,
             character_state=character_state_text or "（暂无角色状态记录）",

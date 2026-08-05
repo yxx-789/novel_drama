@@ -7,12 +7,15 @@ import { useAuthStore } from '../store/auth'
 import { queryClient } from '../queryClient'
 import type { Project } from '../api/project'
 import AISettingsDrawer from '../components/AISettingsDrawer'
+import AIChatDrawer from '../components/AIChatDrawer'
+import InspirationTab from './ProjectDetail/InspirationTab'
 
 function ProjectList() {
   const navigate = useNavigate()
   const { user, clearAuth } = useAuthStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
 
   // 获取当前用户
   useQuery({
@@ -92,6 +95,7 @@ function ProjectList() {
           <p className="text-[10px] font-bold text-slate-400 tracking-[0.3em] uppercase mt-1">Project Workspace</p>
         </div>
         <div className="flex items-center space-x-4">
+          <button onClick={() => setChatOpen(true)} className="btn-ghost">AI 助手</button>
           {user && (
             <span className="text-xs text-slate-400 font-medium">{user.username}</span>
           )}
@@ -110,6 +114,11 @@ function ProjectList() {
             获取项目列表失败
           </div>
         )}
+
+        <div className="glass-panel p-5 space-y-3">
+          <h2 className="text-sm font-serif font-medium text-slate-800">创作灵感</h2>
+          <InspirationTab />
+        </div>
 
         <div className="flex items-center space-x-3">
           <div className="flex-1 relative">
@@ -209,6 +218,7 @@ function ProjectList() {
       </main>
 
       <AISettingsDrawer isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <AIChatDrawer isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   )
 }

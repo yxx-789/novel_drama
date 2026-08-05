@@ -19,6 +19,7 @@ export interface CreateProjectRequest {
   genre?: string
   num_chapters?: number
   word_number?: number
+  writing_config?: object
 }
 
 export interface UpdateProjectRequest {

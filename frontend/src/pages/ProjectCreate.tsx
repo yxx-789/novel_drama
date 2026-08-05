@@ -1,13 +1,26 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { createProject } from '../api/project'
+import { importInspiration } from '../api/inspiration'
 import { queryClient } from '../queryClient'
 
 function ProjectCreate() {
   const navigate = useNavigate()
-  const [name, setName] = useState('')
-  const [topic, setTopic] = useState('')
+  const [searchParams] = useSearchParams()
+  const queryTopic = searchParams.get('topic') || ''
+  const inspiration = {
+    note_id: searchParams.get('note_id') || '',
+    title: queryTopic,
+    summary: searchParams.get('summary') || '',
+    likes: Number(searchParams.get('likes') || 0),
+    collects: 0,
+    url: searchParams.get('url') || '',
+    author: searchParams.get('author') || '',
+    fetched_at: new Date().toISOString(),
+  }
+  const [name, setName] = useState(queryTopic)
+  const [topic, setTopic] = useState(queryTopic)
   const [genre, setGenre] = useState('')
   const [numChapters, setNumChapters] = useState(20)
   const [wordNumber, setWordNumber] = useState(3000)
@@ -15,8 +28,15 @@ function ProjectCreate() {
 
   const mutation = useMutation({
     mutationFn: createProject,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
+      if (inspiration.note_id) {
+        try {
+          await importInspiration(data.id, { ...inspiration, title: topic || queryTopic })
+        } catch (e) {
+          console.error('导入灵感失败', e)
+        }
+      }
       navigate(`/projects/${data.id}`)
     },
     onError: (err: any) => {

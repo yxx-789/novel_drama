@@ -10,6 +10,7 @@ import uuid
 
 from app.core.config import settings
 from app.generator.llm_adapter import create_llm_adapter
+from sqlalchemy.ext.asyncio import AsyncSession
 import re
 
 from app.generator.block_library import build_context
@@ -432,6 +433,54 @@ async def extract_world_state_delta(
         return {"changed_in_chapter": chapter_number, "no_changes": True}
 
     return delta
+
+
+async def extract_chapter_memory(
+    db: AsyncSession,
+    chapter,
+    llm_config: dict | None = None,
+) -> dict:
+    """
+    从章节正文提取结构化记忆，供后续章节保持连贯。
+
+    返回 dict：summary / hook / characters / relations_changed / foreshadowing_added / connects_to。
+    - 成功：LLM 返回的结构化 JSON。
+    - 失败回退：{"summary": 章节正文前 300 字}；正文为空时回退空 dict {}。
+    - db 参数按接口保留（当前未使用，供后续扩展）。
+
+    调用方仅在返回 dict 含可用 summary 时才写入 chapter.actual_summary_json。
+    """
+    draft = getattr(chapter, "draft", None) or ""
+    if not draft:
+        return {}
+    fallback = {"summary": draft[:300]}
+
+    if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key")):
+        return fallback
+
+    try:
+        from app.generator.prompts import chapter_memory_extract_prompt
+
+        adapter = _make_adapter(temperature=0.2, llm_config=llm_config)
+        prompt = chapter_memory_extract_prompt.format(chapter_text=draft[:4000])  # 截断防止超限
+        logger.info(f"Extracting chapter memory for chapter {getattr(chapter, 'chapter_num', '?')} ...")
+        raw = await _invoke_with_retry(adapter, prompt)
+    except Exception as e:
+        logger.warning(f"Chapter memory extraction failed: {e}")
+        return fallback
+
+    if not raw:
+        return fallback
+
+    memory = _parse_llm_json(raw)
+    if not memory:
+        logger.warning("Failed to parse chapter memory JSON, falling back")
+        return fallback
+
+    # 保证 summary 字段可用；缺失时用正文前 300 字兜底
+    if not isinstance(memory.get("summary"), str) or not memory["summary"].strip():
+        memory["summary"] = fallback.get("summary", "") or ""
+    return memory
 
 
 def merge_world_state(old_state: dict, delta: dict) -> dict:

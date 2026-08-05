@@ -505,3 +505,22 @@ build_state_summary_prompt = """\
 
 仅返回摘要列表，不要输出任何解释性文字。
 """
+
+# =============== 12. 章节结构化记忆提取 ===================
+chapter_memory_extract_prompt = """\
+作为资深小说编辑，请阅读以下章节正文，提取结构化记忆，供后续章节保持连贯。
+
+【章节正文】
+{chapter_text}
+
+只返回 JSON，格式：
+{{
+  "summary": "150-300字精炼摘要：本章实际发生了什么（事件/冲突/结果）",
+  "hook": "本章结尾留下的悬念钩子",
+  "characters": ["出场角色名"],
+  "relations_changed": {{"角色A-角色B": "关系变化描述"}},
+  "foreshadowing_added": [{{"name": "伏笔名", "note": "埋设说明"}}],
+  "connects_to": "留给下一章的续接点（下章该从哪继续）"
+}}
+仅返回 JSON。
+"""

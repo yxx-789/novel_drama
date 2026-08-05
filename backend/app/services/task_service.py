@@ -11,6 +11,7 @@ from app.services.drama_service import generate_drama_outline, generate_drama_sc
 from app.services.generation_service import (
     build_state_summary,
     check_chapter_consistency,
+    extract_chapter_memory,
     extract_world_state_delta,
     generate_architecture,
     generate_chapter_draft,
@@ -253,6 +254,25 @@ async def run_directory_task(task_id: uuid.UUID) -> None:
                 pass
 
 
+def _previous_chapter_summary(prev_chapter) -> str:
+    """
+    取前章概要，作为下一章生成的衔接上下文。
+
+    优先级：
+    1. prev.actual_summary_json["summary"]（结构化记忆提取的实际摘要）
+    2. prev.outline（章节目录规划摘要，旧项目无 actual_summary_json 时的回退）
+    3. ""（无前章）
+
+    任何一步缺失或为空都会平滑回退，保证旧数据/旧管线行为不变。
+    """
+    if prev_chapter is None:
+        return ""
+    memory = getattr(prev_chapter, "actual_summary_json", None)
+    if isinstance(memory, dict) and isinstance(memory.get("summary"), str) and memory["summary"].strip():
+        return memory["summary"]
+    return prev_chapter.outline or ""
+
+
 async def run_chapter_task(task_id: uuid.UUID) -> None:
     """后台执行单章正文生成任务"""
     async with AsyncSessionLocal() as db:
@@ -309,7 +329,7 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                 prev_chapter = result.scalar_one_or_none()
                 if prev_chapter:
                     previous_draft = prev_chapter.draft
-                    previous_summary = prev_chapter.outline or ""
+                    previous_summary = _previous_chapter_summary(prev_chapter)
 
             # 构建 world_state 摘要
             world_state_summary = ""
@@ -424,6 +444,16 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                     status="draft_generated",
                 )
                 db.add(chapter)
+
+            # 结构化章节记忆提取（非阻塞，失败不中断生成）
+            try:
+                memory = await extract_chapter_memory(db, chapter, llm_config)
+                if memory and memory.get("summary"):
+                    chapter.actual_summary_json = memory
+                    logger.info(f"Chapter memory extracted for chapter {chapter_num}")
+            except Exception as e:
+                logger.warning(f"Chapter memory extraction failed for chapter {chapter_num}: {e}")
+
             await db.commit()
 
             await update_task_status(
@@ -536,7 +566,7 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                         prev_chapter = result.scalar_one_or_none()
                         if prev_chapter:
                             previous_draft = prev_chapter.draft
-                            previous_summary = prev_chapter.outline or ""
+                            previous_summary = _previous_chapter_summary(prev_chapter)
 
                     # 构建 world_state 摘要
                     world_state_summary = ""
@@ -620,6 +650,15 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                             logger.info(f"Batch world state updated for chapter {chapter_num}")
                     except Exception as e:
                         logger.warning(f"Batch world state update failed for chapter {chapter_num}: {e}")
+
+                    # 结构化章节记忆提取（非阻塞，失败不中断生成）
+                    try:
+                        memory = await extract_chapter_memory(db, chapter, llm_config)
+                        if memory and memory.get("summary"):
+                            chapter.actual_summary_json = memory
+                            logger.info(f"Batch chapter memory extracted for chapter {chapter_num}")
+                    except Exception as e:
+                        logger.warning(f"Batch chapter memory extraction failed for chapter {chapter_num}: {e}")
 
                     await db.commit()
                     generated_count += 1

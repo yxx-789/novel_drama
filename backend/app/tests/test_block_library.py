@@ -298,3 +298,56 @@ def test_build_context_default_recipe_with_rolled_flavor():
         assert ctx, f"{genre} 默认配方+风味无法生成上下文"
         if cfg["internal_flavor"]:
             assert "【内部风味】" in ctx, f"{genre} 上下文缺失内部风味段"
+
+
+# ---------- 3.6 用户自定义要求（writing_config.custom 5 字段） ----------
+def test_build_context_renders_custom_requirements():
+    # custom 5 字段有值时拼成【用户自定义要求】段，各字段原文注入
+    config = {
+        "core_genre": "玄幻",
+        "background": "宗门林立",
+        "custom": {
+            "core_selling_point": "强调金手指的代价与成长",
+            "unique_setting": "以炼丹师为唯一修炼体系",
+            "character_req": "主角性格坚韧但非全知全能",
+            "avoid": "避免主角无脑碾压",
+            "free_note": "希望文风带一点幽默",
+        },
+    }
+    ctx = build_context(config)
+    assert "【用户自定义要求】" in ctx
+    for text in ("核心卖点要求：强调金手指的代价与成长",
+                 "独特设定：以炼丹师为唯一修炼体系",
+                 "角色要求：主角性格坚韧但非全知全能",
+                 "需避免：避免主角无脑碾压",
+                 "补充说明：希望文风带一点幽默"):
+        assert text in ctx, f"custom 字段未注入上下文：{text}"
+    # 自定义要求段应排在最后
+    assert ctx.rindex("【用户自定义要求】") > ctx.rindex("【核心题材")
+
+
+def test_build_context_custom_partial_fields_only_present():
+    # 只填部分字段时，仅有值的字段出现
+    config = {"core_genre": "都市", "custom": {"avoid": "不写悲剧结局"}}
+    ctx = build_context(config)
+    assert "【用户自定义要求】" in ctx
+    assert "需避免：不写悲剧结局" in ctx
+    assert "核心卖点要求" not in ctx
+    assert "补充说明" not in ctx
+
+
+def test_build_context_no_custom_when_absent_or_empty():
+    # custom 缺失 / 非 dict / 全为空值时，不出现【用户自定义要求】段
+    assert "【用户自定义要求】" not in build_context({"core_genre": "玄幻"})
+    assert "【用户自定义要求】" not in build_context({"core_genre": "玄幻", "custom": {}})
+    assert "【用户自定义要求】" not in build_context({"core_genre": "玄幻", "custom": None})
+    assert "【用户自定义要求】" not in build_context({"core_genre": "玄幻", "custom": {"avoid": "   "}})
+
+
+# ---------- 3.7 roll_internal_flavor 类型防御 ----------
+def test_roll_internal_flavor_non_string_genre_guard():
+    # 非字符串 core_genre（缺失 / None / 不可哈希类型）不得抛 TypeError，置空列表
+    assert roll_internal_flavor({})["internal_flavor"] == []
+    assert roll_internal_flavor({"core_genre": None})["internal_flavor"] == []
+    assert roll_internal_flavor({"core_genre": ["玄幻"]})["internal_flavor"] == []
+    assert roll_internal_flavor({"core_genre": {"x": 1}})["internal_flavor"] == []

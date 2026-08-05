@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.generator.block_library import roll_internal_flavor
 from app.models.project import Project
 from app.schemas.project import ProjectCreate, ProjectUpdate
 
@@ -12,13 +13,20 @@ async def create_project(
     project_in: ProjectCreate,
     owner_id: uuid.UUID,
 ) -> Project:
+    # C1：接入内部风味层——对传入的 writing_config 掷一组内部风味，写回 internal_flavor 键，
+    # 使 build_context 能渲染「内部风味」段。writing_config 可能为 None，rolling 前先转为 dict。
+    if project_in.writing_config:
+        config = dict(project_in.writing_config)
+        config = roll_internal_flavor(config)
+    else:
+        config = None
     project = Project(
         name=project_in.name,
         topic=project_in.topic,
         genre=project_in.genre,
         num_chapters=project_in.num_chapters,
         word_number=project_in.word_number,
-        writing_config=project_in.writing_config,
+        writing_config=config,
         owner_id=str(owner_id),
     )
     db.add(project)

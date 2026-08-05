@@ -1,5 +1,6 @@
 import { statusBadge } from './utils'
 import type { Project } from '../../api/project'
+import { DIMENSION_OPTIONS } from '../../constants/blocks'
 
 interface OverviewTabProps {
   project: Project
@@ -80,14 +81,9 @@ export default function OverviewTab({
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
             >
               <option value="">请选择类型</option>
-              <option value="玄幻">玄幻</option>
-              <option value="都市">都市</option>
-              <option value="科幻">科幻</option>
-              <option value="仙侠">仙侠</option>
-              <option value="历史">历史</option>
-              <option value="悬疑">悬疑</option>
-              <option value="言情">言情</option>
-              <option value="其他">其他</option>
+              {DIMENSION_OPTIONS.core_genre.map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-4">

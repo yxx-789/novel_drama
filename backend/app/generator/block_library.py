@@ -1598,6 +1598,11 @@ def roll_internal_flavor(config: dict | None) -> dict:
     if config is None:
         return {}
     genre = config.get("core_genre")
+    # I3：类型防御——genre 非字符串（缺失/None/不可哈希类型）时不得进入 INTERNAL_FLAVORS.get，
+    # 否则 unhashable 类型会抛 TypeError。统一置为空列表并返回。
+    if not isinstance(genre, str):
+        config["internal_flavor"] = []
+        return config
     flavors = INTERNAL_FLAVORS.get(genre)
     if not flavors:
         config["internal_flavor"] = []
@@ -1673,6 +1678,34 @@ def _render_multi_select(dim: str, values: list) -> str:
     return f"【{DIMENSION_LABELS[dim]}】\n" + "\n".join(lines)
 
 
+# 用户自定义要求（writing_config.custom）5 字段的显示名
+CUSTOM_FIELD_LABELS = {
+    "core_selling_point": "核心卖点要求",
+    "unique_setting": "独特设定",
+    "character_req": "角色要求",
+    "avoid": "需避免",
+    "free_note": "补充说明",
+}
+
+
+def _render_custom_requirements(config: dict) -> str:
+    """把 config["custom"] 的 5 个自定义字段格式化为「用户自定义要求」上下文段。
+
+    只输出有值（非空白字符串）的字段；全部为空或 custom 缺失时返回空串，不出现该段。
+    """
+    custom = config.get("custom")
+    if not isinstance(custom, dict):
+        return ""
+    lines = []
+    for key, label in CUSTOM_FIELD_LABELS.items():
+        value = custom.get(key)
+        if isinstance(value, str) and value.strip():
+            lines.append(f"· {label}：{value.strip()}")
+    if not lines:
+        return ""
+    return "【用户自定义要求】\n" + "\n".join(lines)
+
+
 def build_context(config: dict | None) -> str:
     """
     把 config 各维度的 prompt_fragment 拼成一段「写作上下文」文本。
@@ -1680,7 +1713,8 @@ def build_context(config: dict | None) -> str:
     config 形如：
       {"core_genre": "玄幻", "background": ["宗门林立", "大陆争霸"], "hook": ["金手指系统"], ...}
     多选维度（background/hook）为数组时逐项查块、注入各 prompt_fragment 的核心内容；
-    未知维度 / 未知选项会被忽略或降级为原文直述；用户自定义字段与剧情走向不在此处拼接
+    未知维度 / 未知选项会被忽略或降级为原文直述；用户自定义要求（writing_config.custom
+    的 5 个字段）有值时以【用户自定义要求】段拼接到末尾；剧情走向不在此处拼接
     （剧情走向由创作意图环节单独高优先注入，保持职责正交）。
     """
     if not config:
@@ -1711,4 +1745,8 @@ def build_context(config: dict | None) -> str:
             flavor_section = _render_internal_flavor(config)
             if flavor_section:
                 sections.append(flavor_section)
+    # I2：用户自定义要求（custom 5 字段）拼到上下文末尾，有值才出现
+    custom_section = _render_custom_requirements(config)
+    if custom_section:
+        sections.append(custom_section)
     return "\n\n".join(sections)

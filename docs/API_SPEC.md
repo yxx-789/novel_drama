@@ -415,6 +415,86 @@ Authorization: Bearer <token>
 }
 ```
 
+### 创作灵感
+
+| 方法 | 路径 | 说明 | 状态 |
+|------|------|------|------|
+| GET | /inspiration/categories | 预设灵感分类列表 | 已实现 |
+| GET | /inspiration/hot | 热点灵感列表（按点赞排序） | 已实现 |
+| POST | /projects/{id}/inspiration | 导入灵感（设主题 + 写入 inspiration 资产） | 已实现 |
+
+**请求/响应示例**
+
+获取分类（需 JWT）：
+```http
+GET /api/inspiration/categories
+Authorization: Bearer <token>
+```
+
+响应：
+```json
+[
+  "热门话题",
+  "小说推荐",
+  "短剧",
+  "玄幻",
+  "重生"
+]
+```
+
+获取热点（需 JWT）：
+```http
+GET /api/inspiration/hot?category=玄幻&keyword=重生&limit=20
+Authorization: Bearer <token>
+```
+
+响应：
+```json
+[
+  {
+    "note_id": "662f00000000000000000000",
+    "title": "重生之我在都市当神豪",
+    "summary": "主角重生九十年代逆袭……",
+    "likes": 5200,
+    "collects": 320,
+    "url": "https://example.com/note/662f00000000000000000000",
+    "author": "某作者",
+    "fetched_at": "2026-08-04T06:30:00Z"
+  }
+]
+```
+
+> 说明：
+> - 三个灵感接口均通过 `get_current_user` 依赖验证 JWT，鉴权方式与项目接口一致。
+> - `GET /api/inspiration/hot` 仅返回最近一批采集的热点（`fetched_at` 为最新批次），按 `likes` 降序排列；支持 `category`（精确匹配）与 `keyword`（对标题/摘要模糊搜索）过滤，`limit` 默认 20、上限 50。
+> - 热点响应字段为 note_id / title / summary / likes / collects / url / author / fetched_at，**不含 source 字段**。
+> - `POST /api/projects/{id}/inspiration` 请求体为灵感对象（note_id / title / summary / likes / url / author / tags）。导入会将项目 `topic` 设为标题，并把灵感详情写入 `inspiration` 资产（幂等覆盖，重复导入覆盖旧内容）。项目不存在或非 owner 返回 404。
+
+导入灵感（需 JWT）：
+```http
+POST /api/projects/{id}/inspiration
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "note_id": "662f00000000000000000000",
+  "title": "重生之我在都市当神豪",
+  "summary": "主角重生九十年代逆袭……",
+  "likes": 5200,
+  "url": "https://example.com/note/662f00000000000000000000",
+  "author": "某作者",
+  "tags": ["重生", "都市"]
+}
+```
+
+响应：
+```json
+{
+  "success": true,
+  "topic": "重生之我在都市当神豪"
+}
+```
+
 ### 任务
 
 | 方法 | 路径 | 说明 | 状态 |

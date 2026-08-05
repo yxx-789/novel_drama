@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.infra.database import AsyncSessionLocal
 from app.infra.redis import close_redis
 from app.models.project import Task
-from app.routers import assets, auth, chapters, chat, drama, generate, health, projects, tasks, user
+from app.routers import assets, auth, chapters, chat, drama, generate, health, inspiration, projects, tasks, user
 
 logger = logging.getLogger(__name__)
 
@@ -71,3 +71,4 @@ app.include_router(assets.router, prefix="/api", tags=["assets"])
 app.include_router(drama.router, prefix="/api", tags=["drama"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(user.router, prefix="/api", tags=["user"])
+app.include_router(inspiration.router, prefix="/api", tags=["inspiration"])

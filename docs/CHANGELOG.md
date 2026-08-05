@@ -33,6 +33,24 @@
 - **单元测试**
   - `backend/app/tests/test_block_library.py` 覆盖积木库完整性（非空 / 长度达标 / label 齐全 / 默认配方覆盖全部题材 / 内部风味合法 / build_context 正确性 / 多选数组 / 未知项降级）
 
+### 写作配置冲突规则引擎
+
+- **规则数据 + 检测函数（后端唯一真源）**
+  - `backend/app/generator/block_library.py` 新增冲突规则段：背景世界系分组（古风 / 山野中性 / 现代 / 未来）、题材硬禁背景系（历史禁现代/未来，体育禁古风/未来）、硬冲突规则（HARD_CONFLICTS）、软警告规则（SOFT_WARNINGS）
+  - 检测函数 `check_hard_conflicts` / `check_soft_warnings` / `validate_writing_config` 统一兼容字符串 / 数组取值，缺失维度视为未选、未知取值不崩溃；`validate_writing_config` 汇总 hard + soft，`valid = 无硬冲突`（软警告不阻断）
+  - 硬冲突覆盖：背景跨系（非中性世界系多选并存）、题材×背景系、精简卡司×群像交织、金手指系统×打脸爽感（无敌×打脸）、娇软治愈×女强飒爽（内部风味互斥）
+  - 软警告覆盖：罕见融合（如仙侠×末世废土）、卖点错位、文风×受众、文风×题材、结构×受众、规模×题材、结构×背景、重生×穿越冗余、剧情走向×设定（关键词 vs 背景系）
+
+- **创建时校验（硬冲突 400）**
+  - `project_service.create_project` 在掷内部风味前用 `validate_writing_config` 校验用户原始选择：硬冲突抛 `ValueError` → `routers/projects.py` 转 HTTP 400 返回冲突文案；软警告不阻断、仅记日志；无 writing_config（旧项目）跳过
+
+- **前端实时灰禁 + 弹确认**
+  - `frontend/src/constants/conflicts.ts` 新增规则轻量副本（与后端数据保持一致，后端为准）；`frontend/src/pages/ProjectCreate.tsx` 实时检测：题材硬禁世界系与跨世界系背景置灰（山野中性系除外）、精简卡司禁选群像交织、群像交织反向禁选精简卡司、金手指系统×打脸爽感互斥置灰
+  - 软冲突通过 `window.confirm` 询问是否继续（不阻断）；提交前再做一次硬冲突检查，命中则阻止提交并展示冲突项
+
+- **单元测试**
+  - `backend/app/tests/test_project_service.py` 覆盖：硬冲突创建被拒（精简×群像 / 历史×都市霓虹）、软警告不阻断（仙侠×末世废土，正常创建并写回 internal_flavor）、无冲突 / 空 / 缺失 config 正常创建、plot_direction 剧情走向×设定软警告不阻断
+
 ### 灵感策展（LLM 策展 + 加权排序）
 
 - **LLM 策展**：采集器在入库前先取正文，再让 LLM 判断创作价值，只保留有叙事潜力的热点并附灵感点与质量分

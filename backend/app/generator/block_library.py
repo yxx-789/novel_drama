@@ -1797,6 +1797,14 @@ def _dedupe(items: list) -> list:
     return out
 
 
+class ConfigHardConflictError(ValueError):
+    """写作配置存在硬冲突时抛出的专用异常。
+
+    仅供创建路径在检测到硬冲突时抛出，router 据此转 HTTP 400；
+    其它 ValueError 不应被当作「写作配置冲突」处理（避免 400 误标与内部文案泄露）。
+    """
+
+
 # ----------------------------------------------------------------------
 # 8.6 检测函数
 # ----------------------------------------------------------------------
@@ -1883,16 +1891,25 @@ def check_soft_warnings(config: dict) -> list:
             text = config.get(rule["dim"])
             bg_values = _config_values(config, rule["background_dim"])
             if isinstance(text, str) and text.strip() and bg_values:
-                bg_systems = {_background_system(b) for b in bg_values if _background_system(b)}
-                has_neutral = any(_background_system(b) == "山野" for b in bg_values)
-                mismatched = [
-                    kw for kw, sys in rule["keywords"].items()
-                    if kw in text and sys not in bg_systems and not has_neutral
-                ]
-                if mismatched:
+                matched_keywords = [kw for kw in rule["keywords"] if kw in text]
+                # 逐背景块判定（山野中性豁免不全局生效）：
+                # 只有「与关键词所在世界系一致的背景块」一致豁免；被关键词命中的非山野块仍提示。
+                conflicts: dict[str, list[str]] = {}
+                for bg in bg_values:
+                    sys = _background_system(bg)
+                    if sys is None:
+                        continue
+                    for kw in matched_keywords:
+                        kw_sys = rule["keywords"][kw]
+                        if kw_sys == sys:
+                            continue  # 该背景块与剧情走向一致
+                        if sys == "山野":
+                            continue  # 山野为中性系，与任意剧情走向都不冲突
+                        conflicts.setdefault(bg, []).append(kw)
+                for bg, kws in conflicts.items():
                     soft.append(rule["message"].format(
-                        keywords="、".join(mismatched),
-                        background="、".join(bg_values),
+                        keywords="、".join(kws),
+                        background=bg,
                     ))
     return _dedupe(soft)
 

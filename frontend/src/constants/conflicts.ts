@@ -366,17 +366,23 @@ export function checkSoftWarnings(config: WritingConfig): string[] {
       const text = config[rule.dim]
       const bgValues = configValues(config, rule.background_dim)
       if (typeof text === 'string' && text.trim() && bgValues.length) {
-        const bgSystems = new Set(
-          bgValues.map((b) => backgroundSystem(b)).filter((s): s is string => s !== null),
-        )
-        const hasNeutral = bgValues.some((b) => backgroundSystem(b) === '山野')
-        const mismatched = Object.entries(rule.keywords)
-          .filter(([kw, sys]) => text.includes(kw) && !bgSystems.has(sys) && !hasNeutral)
-          .map(([kw]) => kw)
-        if (mismatched.length) {
-          soft.push(
-            fill(rule.message, { keywords: mismatched.join('、'), background: bgValues.join('、') }),
-          )
+        const matchedKeywords = Object.keys(rule.keywords).filter((kw) => text.includes(kw))
+        // 逐背景块判定（山野中性豁免不全局生效）：
+        // 只有「与关键词所在世界系一致的背景块」一致豁免；被关键词命中的非山野块仍提示。
+        const conflicts: Record<string, string[]> = {}
+        for (const bg of bgValues) {
+          const sys = backgroundSystem(bg)
+          if (!sys) continue
+          for (const kw of matchedKeywords) {
+            const kwSys = rule.keywords[kw]
+            if (kwSys === sys) continue // 该背景块与剧情走向一致
+            if (sys === '山野') continue // 山野为中性系，与任意剧情走向都不冲突
+            if (!conflicts[bg]) conflicts[bg] = []
+            conflicts[bg].push(kw)
+          }
+        }
+        for (const [bg, kws] of Object.entries(conflicts)) {
+          soft.push(fill(rule.message, { keywords: kws.join('、'), background: bg }))
         }
       }
     }

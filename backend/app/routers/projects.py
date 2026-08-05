@@ -4,6 +4,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.generator.block_library import ConfigHardConflictError
 from app.infra.database import get_db
 from app.models.user import User
 from app.routers.dependency import get_current_user
@@ -39,8 +40,9 @@ async def create_new_project(
 ):
     try:
         project = await create_project(db, project_in, current_user.id)
-    except ValueError as e:
-        # 写作配置存在硬冲突 → 400，detail 即服务层给出的冲突文案
+    except ConfigHardConflictError as e:
+        # 写作配置存在硬冲突 → 400，detail 即服务层给出的冲突文案；
+        # 其它 ValueError 不在此捕获（让其正常 500，避免把非冲突错误误标为 400）
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),

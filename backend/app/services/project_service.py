@@ -4,7 +4,11 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.generator.block_library import roll_internal_flavor, validate_writing_config
+from app.generator.block_library import (
+    ConfigHardConflictError,
+    roll_internal_flavor,
+    validate_writing_config,
+)
 from app.models.project import Project
 from app.schemas.project import ProjectCreate, ProjectUpdate
 
@@ -19,11 +23,12 @@ async def create_project(
     # C2：创建时校验写作配置——在掷内部风味之前，用 validate_writing_config 校验用户原始选择的
     # writing_config（不含 internal_flavor）。内部风味是系统自动配的、天然兼容，不参与创建拦截；
     # plot_direction 等用户输入字段已含在 writing_config 中，规则正常触发。
-    # 硬冲突 → ValueError，由 router 转 400；软警告不阻断，仅记日志；无 writing_config（旧项目）跳过。
+    # 硬冲突 → ConfigHardConflictError，由 router 转 400；软警告不阻断，仅记日志；
+    # 无 writing_config（旧项目）跳过。
     if project_in.writing_config:
         conflict = validate_writing_config(project_in.writing_config)
         if conflict["hard"]:
-            raise ValueError(
+            raise ConfigHardConflictError(
                 f"写作配置存在冲突：{'；'.join(conflict['hard'])}"
             )
         if conflict["soft"]:

@@ -106,6 +106,7 @@ interface WritingState {
   style: string
   audience: string
   castScale: string
+  plotDirection: string
 }
 
 /** 把前端写作状态映射为与后端 writing_config 同构的检测用 config（缺省维度不出现）。 */
@@ -118,6 +119,7 @@ const writingStateToConfig = (s: WritingState): WritingConfig => {
   if (s.style) c.style = s.style
   if (s.audience) c.audience = s.audience
   if (s.castScale) c.cast_scale = s.castScale
+  if (s.plotDirection.trim()) c.plot_direction = s.plotDirection.trim()
   return c
 }
 
@@ -208,38 +210,39 @@ function ProjectCreate() {
           style: recipe.style,
           audience: recipe.audience,
           castScale: recipe.cast_scale,
+          plotDirection,
         }
-      : { coreGenre: genre, background: [], hooks: [], structure: '', style: '', audience: '', castScale: '' }
+      : { coreGenre: genre, background: [], hooks: [], structure: '', style: '', audience: '', castScale: '', plotDirection }
     applyWritingState(next)
   }
 
   const handleBackgroundChange = (v: string[]) =>
-    applyWritingState({ coreGenre, background: v, hooks, structure, style, audience, castScale })
+    applyWritingState({ coreGenre, background: v, hooks, structure, style, audience, castScale, plotDirection })
   const handleHooksChange = (v: string[]) =>
-    applyWritingState({ coreGenre, background, hooks: v, structure, style, audience, castScale })
+    applyWritingState({ coreGenre, background, hooks: v, structure, style, audience, castScale, plotDirection })
   const handleStructureChange = (v: string) =>
-    applyWritingState({ coreGenre, background, hooks, structure: v, style, audience, castScale })
+    applyWritingState({ coreGenre, background, hooks, structure: v, style, audience, castScale, plotDirection })
   const handleStyleChange = (v: string) =>
-    applyWritingState({ coreGenre, background, hooks, structure, style: v, audience, castScale })
+    applyWritingState({ coreGenre, background, hooks, structure, style: v, audience, castScale, plotDirection })
   const handleAudienceChange = (v: string) =>
-    applyWritingState({ coreGenre, background, hooks, structure, style, audience: v, castScale })
+    applyWritingState({ coreGenre, background, hooks, structure, style, audience: v, castScale, plotDirection })
   const handleCastScaleChange = (v: string) =>
-    applyWritingState({ coreGenre, background, hooks, structure, style, audience, castScale: v })
+    applyWritingState({ coreGenre, background, hooks, structure, style, audience, castScale: v, plotDirection })
 
-  // 实时检测：硬冲突 / 软警告（仅 7 维，不含剧情走向关键词）
+  // 实时检测：硬冲突 / 软警告（含剧情走向关键词 → 触发 plot_vs_setting）
   const hardWarnings = useMemo<string[]>(
     () =>
       checkHardConflicts(
-        writingStateToConfig({ coreGenre, background, hooks, structure, style, audience, castScale }),
+        writingStateToConfig({ coreGenre, background, hooks, structure, style, audience, castScale, plotDirection }),
       ),
-    [coreGenre, background, hooks, structure, style, audience, castScale],
+    [coreGenre, background, hooks, structure, style, audience, castScale, plotDirection],
   )
   const softWarnings = useMemo<string[]>(
     () =>
       checkSoftWarnings(
-        writingStateToConfig({ coreGenre, background, hooks, structure, style, audience, castScale }),
+        writingStateToConfig({ coreGenre, background, hooks, structure, style, audience, castScale, plotDirection }),
       ),
-    [coreGenre, background, hooks, structure, style, audience, castScale],
+    [coreGenre, background, hooks, structure, style, audience, castScale, plotDirection],
   )
 
   // 联动禁用：
@@ -334,6 +337,12 @@ function ProjectCreate() {
     if (hard.length) {
       setError(hard.join('\n'))
       return
+    }
+    // 提交前软警告确认（含剧情走向×背景 plot_vs_setting）
+    const soft = checkSoftWarnings(config)
+    if (soft.length) {
+      const confirmed = window.confirm(soft.join('\n\n') + '\n\n是否继续？')
+      if (!confirmed) return
     }
     mutation.mutate({
       name,

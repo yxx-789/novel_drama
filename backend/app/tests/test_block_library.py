@@ -507,6 +507,23 @@ def test_soft_warning_plot_matches_background_no_warning():
     ) == []
 
 
+def test_soft_warning_plot_neutral_exemption_is_per_block():
+    # 山野中性豁免按背景块逐块生效，不全局跳过：
+    # ["山野灵异", "星际远征"] + plot 含「现代」→ 星际远征与现代冲突应提示（山野灵异豁免）。
+    soft = check_soft_warnings(
+        {"background": ["山野灵异", "星际远征"], "plot_direction": "主角在现代都市的职场一路逆袭"}
+    )
+    assert soft, "山野+星际 且 plot 含现代 应报软警告"
+    for m in soft:
+        assert "山野灵异" not in m, "山野背景块本身应被豁免，不应出现在冲突文案中"
+    assert any("星际远征" in m and "现代" in m for m in soft)
+    # 反向：plot 写山村（山野系关键词）时，山野块一致、星际远征不匹配 → 仍提示星际远征
+    soft2 = check_soft_warnings(
+        {"background": ["山野灵异", "星际远征"], "plot_direction": "山村民俗题材，围绕老宅展开"}
+    )
+    assert soft2 and any("星际远征" in m for m in soft2)
+
+
 def test_soft_warning_missing_plot_or_background_no_warning():
     # 剧情走向未填 / 背景未选 → 不报剧情走向冲突
     assert check_soft_warnings({"background": "星际远征"}) == []

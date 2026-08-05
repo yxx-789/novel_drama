@@ -26,7 +26,10 @@ export default function InspirationTab({ projectId }: Props) {
   })
 
   const importMut = useMutation({
-    mutationFn: (note: HotNote) => importInspiration(projectId!, note),
+    mutationFn: (note: HotNote) => {
+      if (!projectId) throw new Error('缺少项目上下文，无法导入灵感')
+      return importInspiration(projectId, note)
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['project', projectId] })
       addToast(`已导入灵感：${data.topic}`, 'success')

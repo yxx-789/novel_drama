@@ -55,9 +55,8 @@ function AIChatDrawer({ projectId, isOpen, onClose }: AIChatDrawerProps) {
     const init = async () => {
       setInitLoading(true)
       try {
-        const list = projectId
-          ? await listProjectChatSessions(projectId)
-          : await listUserChatSessions()
+        let list = projectId ? await listProjectChatSessions(projectId) : await listUserChatSessions()
+        if (!projectId) list = list.filter((s) => !s.project_id)
         setSessions(list)
         if (list.length > 0) {
           await loadSession(list[0].id)

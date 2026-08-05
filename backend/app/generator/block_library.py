@@ -1763,7 +1763,7 @@ SOFT_WARNINGS = [
 # ----------------------------------------------------------------------
 # 8.5 检测辅助
 # ----------------------------------------------------------------------
-def _config_values(config: dict, dim: str) -> list:
+def _config_values(config: dict, dim: str) -> list[str]:
     """取维度在 config 中的取值列表（兼容 字符串 / 数组 / 缺失 / 未知类型）。"""
     v = config.get(dim) if isinstance(config, dict) else None
     if v is None:
@@ -1778,6 +1778,25 @@ def _config_has(config: dict, dim: str, value: str) -> bool:
     return value in _config_values(config, dim)
 
 
+_NEGATION_PREFIXES = frozenset(("非", "反", "不", "伪", "后", "前"))
+
+
+def _keyword_matches(text: str, keyword: str) -> bool:
+    """关键词命中判定：跳过被否定前缀修饰的误报（如「后现代」「非校园」）。
+
+    仅当关键词某次出现时，其前一个字符不是否定前缀（非/反/不/伪/后/前），
+    才视为真实命中；同一关键词的其它出现仍正常命中（M4）。
+    """
+    start = 0
+    while True:
+        idx = text.find(keyword, start)
+        if idx < 0:
+            return False
+        if idx == 0 or text[idx - 1] not in _NEGATION_PREFIXES:
+            return True
+        start = idx + 1
+
+
 def _background_system(bg: str) -> str | None:
     """返回背景块所属的世界系名；未知背景返回 None。"""
     for sys_name, sys_info in BACKGROUND_SYSTEMS.items():
@@ -1786,7 +1805,7 @@ def _background_system(bg: str) -> str | None:
     return None
 
 
-def _dedupe(items: list) -> list:
+def _dedupe(items: list[str]) -> list[str]:
     """按序去重，保持返回顺序稳定。"""
     seen = set()
     out = []
@@ -1808,8 +1827,8 @@ class ConfigHardConflictError(ValueError):
 # ----------------------------------------------------------------------
 # 8.6 检测函数
 # ----------------------------------------------------------------------
-def check_hard_conflicts(config: dict) -> list:
-    """返回硬冲突提示列表（空 = 无冲突）。
+def check_hard_conflicts(config: dict) -> list[str]:
+    """返回硬冲突提示列表（list[str]，空 = 无冲突）。
 
     覆盖：背景跨系（同维多选）、题材×背景系、规模×结构、卖点互斥（含内部风味互斥）。
     缺失维度视为未选、不报冲突；未知取值不崩溃。
@@ -1857,8 +1876,8 @@ def check_hard_conflicts(config: dict) -> list:
     return _dedupe(hard)
 
 
-def check_soft_warnings(config: dict) -> list:
-    """返回软警告提示列表（空 = 无提示）。
+def check_soft_warnings(config: dict) -> list[str]:
+    """返回软警告提示列表（list[str]，空 = 无提示）。
 
     按 SOFT_WARNINGS 数据匹配：罕见融合 / 卖点错位 / 文风×受众 / 文风×题材 /
     结构×受众 / 规模×题材 / 结构×背景 / 重生×穿越冗余 / 剧情走向×设定。
@@ -1891,7 +1910,7 @@ def check_soft_warnings(config: dict) -> list:
             text = config.get(rule["dim"])
             bg_values = _config_values(config, rule["background_dim"])
             if isinstance(text, str) and text.strip() and bg_values:
-                matched_keywords = [kw for kw in rule["keywords"] if kw in text]
+                matched_keywords = [kw for kw in rule["keywords"] if _keyword_matches(text, kw)]
                 # 逐背景块判定（山野中性豁免不全局生效）：
                 # 只有「与关键词所在世界系一致的背景块」一致豁免；被关键词命中的非山野块仍提示。
                 conflicts: dict[str, list[str]] = {}
@@ -1914,7 +1933,7 @@ def check_soft_warnings(config: dict) -> list:
     return _dedupe(soft)
 
 
-def validate_writing_config(config: dict) -> dict:
+def validate_writing_config(config: dict) -> dict[str, list[str] | bool]:
     """校验入口：汇总硬冲突 + 软警告，valid = 无硬冲突（软警告不阻断）。"""
     hard = check_hard_conflicts(config)
     soft = check_soft_warnings(config)
@@ -1953,7 +1972,16 @@ def roll_internal_flavor(config: dict | None) -> dict:
     keys = list(flavors.keys())
     count = random.choices((1, 2, 3), weights=(50, 30, 20))[0]
     count = min(count, len(keys))
-    config["internal_flavor"] = random.sample(keys, count)
+    picked = random.sample(keys, count)
+    # M1：互斥风味不得同现——HARD_CONFLICTS 中 internal_flavor×internal_flavor 的对
+    # （如言情池的 娇软治愈×女强飒爽），若同时抽中则丢弃后一项，保证自动配置的内部
+    # 风味自洽（丢弃而非重抽，避免小池子死循环）。
+    for rule in HARD_CONFLICTS:
+        if rule["a_dim"] == "internal_flavor" and rule["b_dim"] == "internal_flavor":
+            a, b = rule["a_value"], rule["b_value"]
+            if a in picked and b in picked:
+                picked.remove(b)
+    config["internal_flavor"] = picked
     return config
 
 

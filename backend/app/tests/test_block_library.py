@@ -524,6 +524,30 @@ def test_soft_warning_plot_neutral_exemption_is_per_block():
     assert soft2 and any("星际远征" in m for m in soft2)
 
 
+def test_soft_warning_plot_keyword_negation_prefix_no_false_positive():
+    # M4：「后现代」中的「现代」被否定前缀修饰，不应命中剧情走向关键词
+    # 旧逻辑会因子串匹配误报，导致「星际远征」背景对纯后现代基调误报冲突。
+    assert check_soft_warnings(
+        {"background": "星际远征", "plot_direction": "故事基调不是后现代主义"}
+    ) == []
+
+
+def test_soft_warning_plot_keyword_negated_and_genuine_mixed():
+    # M4：同一关键词既有否定修饰又有真实出现时，仍应命中（不因一条否定出现而漏报）
+    soft = check_soft_warnings(
+        {"background": "星际远征", "plot_direction": "故事不是后现代主义，而是现代都市的回归"}
+    )
+    assert soft and any("星际远征" in m and "现代" in m for m in soft)
+
+
+def test_roll_internal_flavor_no_mutually_exclusive_pair():
+    # M1：言情风味池含互斥对（娇软治愈×女强飒爽），自动配置的内部风味不得同时出现
+    for _ in range(300):
+        config = roll_internal_flavor({"core_genre": "言情"})
+        flavors = config.get("internal_flavor") or []
+        assert not (("娇软治愈" in flavors) and ("女强飒爽" in flavors))
+
+
 def test_soft_warning_missing_plot_or_background_no_warning():
     # 剧情走向未填 / 背景未选 → 不报剧情走向冲突
     assert check_soft_warnings({"background": "星际远征"}) == []

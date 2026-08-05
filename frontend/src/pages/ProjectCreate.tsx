@@ -178,6 +178,8 @@ function ProjectCreate() {
    * - 软警告 → 弹 confirm 询问是否继续（软冲突不阻断，用户确认后照常应用）。
    */
   const applyWritingState = (next: WritingState): void => {
+    // M3：先清空旧 error，避免「硬冲突提示后修改选项→触发软警告→点取消」残留过期错误文案
+    setError('')
     const nextConfig = writingStateToConfig(next)
     const hard = checkHardConflicts(nextConfig)
     if (hard.length) {

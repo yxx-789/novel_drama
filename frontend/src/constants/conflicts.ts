@@ -281,6 +281,19 @@ function dedupe(items: string[]): string[] {
   return Array.from(new Set(items))
 }
 
+const NEGATION_PREFIXES = new Set(['非', '反', '不', '伪', '后', '前'])
+
+/** 关键词命中判定：跳过被否定前缀修饰的误报（如「后现代」「非校园」），与后端 _keyword_matches 保持一致。 */
+function keywordMatches(text: string, keyword: string): boolean {
+  let start = 0
+  while (true) {
+    const idx = text.indexOf(keyword, start)
+    if (idx < 0) return false
+    if (idx === 0 || !NEGATION_PREFIXES.has(text[idx - 1])) return true
+    start = idx + 1
+  }
+}
+
 function fill(message: string, vars: Record<string, string>): string {
   return Object.entries(vars).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(v), message)
 }
@@ -366,7 +379,7 @@ export function checkSoftWarnings(config: WritingConfig): string[] {
       const text = config[rule.dim]
       const bgValues = configValues(config, rule.background_dim)
       if (typeof text === 'string' && text.trim() && bgValues.length) {
-        const matchedKeywords = Object.keys(rule.keywords).filter((kw) => text.includes(kw))
+        const matchedKeywords = Object.keys(rule.keywords).filter((kw) => keywordMatches(text, kw))
         // 逐背景块判定（山野中性豁免不全局生效）：
         // 只有「与关键词所在世界系一致的背景块」一致豁免；被关键词命中的非山野块仍提示。
         const conflicts: Record<string, string[]> = {}

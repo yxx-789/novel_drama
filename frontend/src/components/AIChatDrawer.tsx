@@ -6,20 +6,28 @@ import {
   deleteChatSession,
   getChatSession,
   listProjectChatSessions,
+  listUserChatSessions,
   sendChatMessage,
 } from '../api/chat'
 
 interface AIChatDrawerProps {
-  projectId: string
+  projectId?: string
   isOpen: boolean
   onClose: () => void
 }
 
-const QUICK_PROMPTS = [
+const PROJECT_QUICK_PROMPTS = [
   '帮我完善这个角色设定',
   '这段剧情怎么改更有张力',
   '给这章写个更好的开头',
   '分析一下目前的剧情节奏',
+]
+
+const GENERAL_QUICK_PROMPTS = [
+  '帮我构思一个小说开头',
+  '推荐几个热门题材',
+  '甜宠文怎么写出新意',
+  '我的点子怎么变成完整故事',
 ]
 
 function renderMarkdown(content: string): string {
@@ -43,16 +51,20 @@ function AIChatDrawer({ projectId, isOpen, onClose }: AIChatDrawerProps) {
 
   // 初始化：加载会话列表
   useEffect(() => {
-    if (!isOpen || !projectId) return
+    if (!isOpen) return
     const init = async () => {
       setInitLoading(true)
       try {
-        const list = await listProjectChatSessions(projectId)
+        const list = projectId
+          ? await listProjectChatSessions(projectId)
+          : await listUserChatSessions()
         setSessions(list)
         if (list.length > 0) {
           await loadSession(list[0].id)
         } else {
-          const session = await createChatSession(projectId)
+          const session = projectId
+            ? await createChatSession(projectId)
+            : await createChatSession()
           setSessions([session])
           setActiveSessionId(session.id)
           setMessages([])
@@ -172,7 +184,9 @@ function AIChatDrawer({ projectId, isOpen, onClose }: AIChatDrawerProps) {
 
   const handleNewSession = async () => {
     try {
-      const session = await createChatSession(projectId)
+      const session = projectId
+        ? await createChatSession(projectId)
+        : await createChatSession()
       setSessions((prev: ChatSession[]) => [session, ...prev])
       setActiveSessionId(session.id)
       setMessages([])
@@ -296,10 +310,12 @@ function AIChatDrawer({ projectId, isOpen, onClose }: AIChatDrawerProps) {
               </div>
               <p className="text-sm text-slate-500">我是你的 AI 创作助手</p>
               <p className="text-xs text-slate-400 text-center max-w-[280px]">
-                可以问我关于剧情、角色、写作技巧的问题，我会结合你的项目上下文来回答
+                {projectId
+                  ? '可以问我关于剧情、角色、写作技巧的问题，我会结合你的项目上下文来回答'
+                  : '我是你的 AI 创作助手，可以帮你构思题材、点子、写作技巧'}
               </p>
               <div className="flex flex-wrap gap-2 justify-center max-w-[320px]">
-                {QUICK_PROMPTS.map((prompt) => (
+                {(projectId ? PROJECT_QUICK_PROMPTS : GENERAL_QUICK_PROMPTS).map((prompt) => (
                   <button
                     key={prompt}
                     onClick={() => handleSend(prompt)}

@@ -30,6 +30,11 @@ export async function listProjectChatSessions(projectId: string) {
   return res.data as ChatSession[];
 }
 
+export async function listUserChatSessions() {
+  const res = await apiClient.get(`/api/chat-sessions`);
+  return res.data as ChatSession[];
+}
+
 export async function createChatSession(projectId?: string, title?: string) {
   const res = await apiClient.post("/api/chat-sessions", {
     project_id: projectId || null,

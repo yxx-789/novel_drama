@@ -9,6 +9,9 @@ export interface HotNote {
   url: string | null
   author: string | null
   fetched_at: string
+  comment_count?: number
+  inspiration_hint?: string | null
+  quality_score?: number
 }
 
 export const getInspirationCategories = async (): Promise<string[]> => {

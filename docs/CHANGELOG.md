@@ -2,6 +2,23 @@
 
 ## [未发布]
 
+### 主页创作灵感 + 主页 AI 助手
+
+- **主页创作灵感区（完整复用 InspirationTab）**
+  - `frontend/src/pages/ProjectList.tsx` 顶部新增「创作灵感」glass-panel 区块，直接挂载 `InspirationTab`
+  - 完整复用项目内 Tab 的组件能力（分类 chips / 关键词搜索 / 刷新 / 热点列表），非缩水版
+  - 无项目上下文时，热点按钮文案为「用它创建项目」：携带 note_id / topic / summary / likes / author / url 跳转创建页
+
+- **创建页预填 + 自动导入**
+  - `frontend/src/pages/ProjectCreate.tsx` 读取 query 参数预填项目名称与主题
+  - 创建成功后自动调用 `POST /api/projects/{id}/inspiration` 导入灵感（幂等覆盖，设为项目主题并写入 inspiration 资产）
+
+- **主页 AI 助手（AIChatDrawer 通用模式）**
+  - `AIChatDrawer` 的 `projectId` 改为可选：无项目上下文时调用 `listUserChatSessions` / `createChatSession()`（project_id 为 null）
+  - 通用快捷问题（构思开头 / 推荐题材 / 甜宠新意 / 点子成书）替代项目内快捷问题
+  - 后端 `chat_service._get_project_context()` 在无 project_id 时不注入项目上下文，仅作通用对话
+  - 行为不变：项目内「创作灵感」Tab 仍为「导入项目」；项目内 AI 助手仍带项目上下文
+
 ### 创作灵感功能
 
 - **hot_topics 热点表**

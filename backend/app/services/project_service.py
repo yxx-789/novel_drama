@@ -1,11 +1,14 @@
+import logging
 import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.generator.block_library import roll_internal_flavor
+from app.generator.block_library import roll_internal_flavor, validate_writing_config
 from app.models.project import Project
 from app.schemas.project import ProjectCreate, ProjectUpdate
+
+logger = logging.getLogger(__name__)
 
 
 async def create_project(
@@ -13,6 +16,22 @@ async def create_project(
     project_in: ProjectCreate,
     owner_id: uuid.UUID,
 ) -> Project:
+    # C2：创建时校验写作配置——在掷内部风味之前，用 validate_writing_config 校验用户原始选择的
+    # writing_config（不含 internal_flavor）。内部风味是系统自动配的、天然兼容，不参与创建拦截；
+    # plot_direction 等用户输入字段已含在 writing_config 中，规则正常触发。
+    # 硬冲突 → ValueError，由 router 转 400；软警告不阻断，仅记日志；无 writing_config（旧项目）跳过。
+    if project_in.writing_config:
+        conflict = validate_writing_config(project_in.writing_config)
+        if conflict["hard"]:
+            raise ValueError(
+                f"写作配置存在冲突：{'；'.join(conflict['hard'])}"
+            )
+        if conflict["soft"]:
+            logger.info(
+                "create_project: writing config soft warnings (project=%s): %s",
+                project_in.name,
+                "；".join(conflict["soft"]),
+            )
     # C1：接入内部风味层——对传入的 writing_config 掷一组内部风味，写回 internal_flavor 键，
     # 使 build_context 能渲染「内部风味」段。writing_config 可能为 None，rolling 前先转为 dict。
     if project_in.writing_config:

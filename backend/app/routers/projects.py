@@ -37,7 +37,14 @@ async def create_new_project(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    project = await create_project(db, project_in, current_user.id)
+    try:
+        project = await create_project(db, project_in, current_user.id)
+    except ValueError as e:
+        # 写作配置存在硬冲突 → 400，detail 即服务层给出的冲突文案
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     return project
 
 

@@ -1,14 +1,16 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { getInspirationCategories, getHotNotes, importInspiration, HotNote } from '../../api/inspiration'
 import { queryClient } from '../../queryClient'
 import { useToastStore } from '../../store/toast'
 
 interface Props {
-  projectId: string
+  projectId?: string
 }
 
 export default function InspirationTab({ projectId }: Props) {
+  const navigate = useNavigate()
   const { addToast } = useToastStore()
   const [category, setCategory] = useState('')
   const [keyword, setKeyword] = useState('')
@@ -24,7 +26,7 @@ export default function InspirationTab({ projectId }: Props) {
   })
 
   const importMut = useMutation({
-    mutationFn: (note: HotNote) => importInspiration(projectId, note),
+    mutationFn: (note: HotNote) => importInspiration(projectId!, note),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['project', projectId] })
       addToast(`已导入灵感：${data.topic}`, 'success')
@@ -32,9 +34,21 @@ export default function InspirationTab({ projectId }: Props) {
     onError: (err: any) => addToast(err?.response?.data?.detail || '导入失败', 'error'),
   })
 
-  const handleImport = (note: HotNote) => {
-    if (window.confirm(`将「${note.title}」设为项目主题并作为创作参考？`)) {
-      importMut.mutate(note)
+  const handlePrimaryAction = (note: HotNote) => {
+    if (projectId) {
+      if (window.confirm(`将「${note.title}」设为项目主题并作为创作参考？`)) {
+        importMut.mutate(note)
+      }
+    } else {
+      const params = new URLSearchParams({
+        topic: note.title,
+        note_id: note.note_id,
+        summary: note.summary || '',
+        likes: String(note.likes),
+        author: note.author || '',
+        url: note.url || '',
+      })
+      navigate(`/projects/create?${params.toString()}`)
     }
   }
 
@@ -73,9 +87,9 @@ export default function InspirationTab({ projectId }: Props) {
                 {note.summary && <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{note.summary}</p>}
                 <p className="text-xs text-slate-400 mt-1">👍 {note.likes} · {note.author || '未知作者'}</p>
               </div>
-              <button onClick={() => handleImport(note)}
+              <button onClick={() => handlePrimaryAction(note)}
                 className="shrink-0 ml-3 text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
-                导入项目
+                {projectId ? '导入项目' : '用它创建项目'}
               </button>
             </div>
           ))}

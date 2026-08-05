@@ -1,4 +1,6 @@
-from xhs_hot_collector import normalize_feeds
+import pytest
+
+from xhs_hot_collector import compute_rank_score, normalize_feeds
 
 # 真实结构：note_id 在顶层 `id`，标题/点赞/作者嵌在 noteCard（字符串）
 REAL_FEEDS = [
@@ -53,3 +55,14 @@ def test_normalize_legacy_structure():
 def test_normalize_filters_empty_title_and_id():
     feeds = [{"id": "a1", "noteCard": "{'displayTitle': ''}"}, {"id": "", "noteCard": "{'displayTitle': 'x'}"}]
     assert normalize_feeds(feeds, "甜宠") == []
+
+
+def test_compute_rank_score():
+    row = {"likes": 100, "collects": 10, "shares": 5, "comment_count": 3, "quality_score": 4}
+    assert compute_rank_score(row) == pytest.approx(100 + 10*1.2 + 5*1.5 + 3*2 + 4*300)
+
+
+def test_normalize_keeps_xsec_token():
+    feeds = [{"id": "n1", "xsecToken": "tok", "noteCard": "{'displayTitle': '标题'}"}]
+    rows = normalize_feeds(feeds, "甜宠")
+    assert rows[0]["_xsec_token"] == "tok"

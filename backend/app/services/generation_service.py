@@ -445,7 +445,8 @@ async def extract_chapter_memory(
 
     返回 dict：summary / hook / characters / relations_changed / foreshadowing_added / connects_to。
     - 成功：LLM 返回的结构化 JSON。
-    - 失败回退：{"summary": 章节正文前 300 字}；正文为空时回退空 dict {}。
+    - 失败：返回空 dict {}（LLM 未配置 / 调用异常 / 返回空 / JSON 解析失败 / summary 缺失），
+      调用方不写入 actual_summary_json，下一章自动回退 outline（符合 spec 回退链设计）。
     - db 参数按接口保留（当前未使用，供后续扩展）。
 
     调用方仅在返回 dict 含可用 summary 时才写入 chapter.actual_summary_json。
@@ -453,10 +454,9 @@ async def extract_chapter_memory(
     draft = getattr(chapter, "draft", None) or ""
     if not draft:
         return {}
-    fallback = {"summary": draft[:300]}
 
     if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key")):
-        return fallback
+        return {}
 
     try:
         from app.generator.prompts import chapter_memory_extract_prompt
@@ -467,19 +467,20 @@ async def extract_chapter_memory(
         raw = await _invoke_with_retry(adapter, prompt)
     except Exception as e:
         logger.warning(f"Chapter memory extraction failed: {e}")
-        return fallback
+        return {}
 
     if not raw:
-        return fallback
+        return {}
 
     memory = _parse_llm_json(raw)
     if not memory:
-        logger.warning("Failed to parse chapter memory JSON, falling back")
-        return fallback
+        logger.warning("Failed to parse chapter memory JSON, falling back to outline")
+        return {}
 
-    # 保证 summary 字段可用；缺失时用正文前 300 字兜底
+    # summary 缺失或为空时视为提取失败：返回空 dict，不持久化原文片段
     if not isinstance(memory.get("summary"), str) or not memory["summary"].strip():
-        memory["summary"] = fallback.get("summary", "") or ""
+        logger.warning("Chapter memory missing summary, falling back to outline")
+        return {}
     return memory
 
 
@@ -628,7 +629,7 @@ async def check_chapter_consistency(
 
     adapter = _make_adapter(temperature=0.2, llm_config=llm_config)
 
-    excerpt = previous_chapter_draft[-500:] if previous_chapter_draft else "（无前一章）"
+    excerpt = _chapter_excerpt(previous_chapter_draft) or "（无前一章）"
     prompt = chapter_consistency_check_prompt.format(
         character_state=character_state_text or "（未提供角色状态）",
         previous_chapter_excerpt=excerpt,

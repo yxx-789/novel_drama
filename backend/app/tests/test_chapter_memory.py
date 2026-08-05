@@ -70,29 +70,28 @@ class TestExtractChapterMemory:
         assert result["summary"] == "代码块摘要"
 
     @patch("app.services.generation_service._make_adapter")
-    def test_invalid_json_falls_back_to_first_300_chars(self, mock_make_adapter):
+    def test_invalid_json_returns_empty_dict(self, mock_make_adapter):
         mock_make_adapter.return_value = FakeAdapter("这不是 JSON")
         draft = "字" * 500
         chapter = _fake_chapter(draft=draft)
         result = _run(extract_chapter_memory(None, chapter, {"api_key": "test"}))
-        assert result == {"summary": draft[:300]}
+        assert result == {}
 
     @patch("app.services.generation_service._make_adapter")
-    def test_llm_exception_falls_back(self, mock_make_adapter):
+    def test_llm_exception_returns_empty_dict(self, mock_make_adapter):
         mock_make_adapter.return_value = FakeAdapter(error=RuntimeError("LLM down"))
         draft = "文" * 400
         chapter = _fake_chapter(draft=draft)
         result = _run(extract_chapter_memory(None, chapter, {"api_key": "test"}))
-        assert result == {"summary": draft[:300]}
+        assert result == {}
 
     @patch("app.services.generation_service._make_adapter")
-    def test_missing_summary_filled_with_fallback(self, mock_make_adapter):
+    def test_missing_summary_returns_empty_dict(self, mock_make_adapter):
         mock_make_adapter.return_value = FakeAdapter('{"hook": "只有钩子"}')
         draft = "字" * 300
         chapter = _fake_chapter(draft=draft)
         result = _run(extract_chapter_memory(None, chapter, {"api_key": "test"}))
-        assert result["summary"] == draft[:300]
-        assert result["hook"] == "只有钩子"
+        assert result == {}
 
     @patch("app.services.generation_service._make_adapter")
     def test_empty_draft_returns_empty_dict_without_calling_llm(self, mock_make_adapter):
@@ -102,11 +101,11 @@ class TestExtractChapterMemory:
         mock_make_adapter.assert_not_called()
 
     @patch("app.services.generation_service.settings.LLM_API_KEY", "")
-    def test_llm_not_configured_returns_fallback_summary(self):
+    def test_llm_not_configured_returns_empty_dict(self):
         draft = "字" * 300
         chapter = _fake_chapter(draft=draft)
         result = _run(extract_chapter_memory(None, chapter, None))
-        assert result == {"summary": draft[:300]}
+        assert result == {}
 
 
 class TestPreviousChapterSummary:
@@ -299,4 +298,27 @@ class TestBatchPipelineWiring:
 
         assert ch1.actual_summary_json is None
         assert ch2.actual_summary_json is None
+        assert calls[1]["previous_chapter_summary"] == "第一章大纲"
+
+    def test_batch_llm_extraction_failure_falls_back_to_outline(self):
+        """真实 extract_chapter_memory 的 LLM 提取失败（抛异常）→ 返回空 dict → 不写入 → 回退 outline。"""
+        ch1 = _mk_chapter(1, outline="第一章大纲")
+        ch2 = _mk_chapter(2, outline="第二章大纲")
+        chapters = [ch1, ch2]
+        fake_db = _FakeDB(chapters)
+        calls = []
+
+        async def fake_generate_draft(project, **kwargs):
+            calls.append(kwargs)
+            return "draft"
+
+        with _patch_batch_pipeline(fake_db, fake_generate_draft, extract_chapter_memory), \
+             patch("app.services.generation_service._make_adapter",
+                   return_value=FakeAdapter(error=RuntimeError("LLM down"))):
+            _run(run_batch_chapters_task(uuid.uuid4()))
+
+        # 提取失败 → actual_summary_json 不写入
+        assert ch1.actual_summary_json is None
+        assert ch2.actual_summary_json is None
+        # 下一章概要用 outline（而非原文片段）
         assert calls[1]["previous_chapter_summary"] == "第一章大纲"

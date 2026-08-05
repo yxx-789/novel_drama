@@ -6,7 +6,7 @@
 
 - **章节实际摘要落库（actual_summary_json）**
   - `Chapter` 新增 `actual_summary_json`（JSONB）列（Alembic migration `3bae85f20ef6_add_actual_summary_json_to_chapter.py`），保存每章生成后提取的结构化记忆
-  - `generation_service.extract_chapter_memory()` 从章节正文提取结构化记忆：`summary` / `hook` / `characters` / `relations_changed` / `foreshadowing_added` / `connects_to`；LLM 失败或正文为空时平滑回退（`{"summary": 正文前 300 字}` / `{}`）
+  - `generation_service.extract_chapter_memory()` 从章节正文提取结构化记忆：`summary` / `hook` / `characters` / `relations_changed` / `foreshadowing_added` / `connects_to`；LLM 未配置 / 调用失败 / 返回空 / JSON 解析失败 / summary 缺失或正文为空时返回空 dict `{}`，调用方不写入 `actual_summary_json`，下一章自动回退 outline
   - 单章生成（`run_chapter_task`）与批量生成（`run_batch_chapters_task`）均在每章写库后提取记忆并写入 `actual_summary_json`；提取失败不中断生成（非阻塞）
 
 - **下一章衔接用真实摘要（回退 outline）**
@@ -14,11 +14,11 @@
   - 旧项目/旧管线（无 `actual_summary_json`）自动走 outline 回退，保证行为兼容
 
 - **动态前章结尾窗口（_chapter_excerpt）**
-  - 续章 prompt 的 `previous_chapter_excerpt` 改为动态截取前章正文结尾：长度 ≤800 字取全文，否则取结尾 20%（下限 800 字、上限 2000 字），避免全量前文超限、且比固定 500 字保留更多衔接上下文
+  - 续章 prompt 的 `previous_chapter_excerpt` 改为动态截取前章正文结尾：长度 ≤800 字取全文，否则取结尾 20%（下限 800 字、上限 2000 字），避免全量前文超限、且比固定 500 字保留更多衔接上下文；一致性检查（`check_chapter_consistency`）同样改用该动态窗口，与生成器所见窗口保持一致
 
 - **Prompt 与单元测试**
   - `prompts.py` 续章 prompt 新增 `previous_chapter_summary` / `previous_chapter_excerpt` 段；`chapter_memory_extract_prompt` 定义结构化记忆提取指令
-  - `test_chapter_memory.py` 覆盖 `extract_chapter_memory`（mock LLM 成功 / JSON 解析失败 / 无 key / 空正文 / summary 缺失兜底）与 `_previous_chapter_summary`（真实摘要优先 / outline 回退 / 空值 / None）；`test_memory.py` 覆盖 `_chapter_excerpt` 动态窗口（≤800 全文 / 20% 窗口 / 800-2000 上下限 / 空输入）
+  - `test_chapter_memory.py` 覆盖 `extract_chapter_memory`（mock LLM 成功 / JSON 解析失败 / LLM 异常 / 无 key / 空正文 / summary 缺失均返回空 dict `{}`）与 `_previous_chapter_summary`（真实摘要优先 / outline 回退 / 空值 / None）；`test_memory.py` 覆盖 `_chapter_excerpt` 动态窗口（≤800 全文 / 20% 窗口 / 800-2000 上下限 / 空输入）
 
 ### V3 P1：积木式生成
 

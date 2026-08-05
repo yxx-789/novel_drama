@@ -13,13 +13,17 @@ async def get_hot_notes(
     keyword: Optional[str] = None,
     limit: int = 20,
 ) -> list[dict]:
-    """读最近一批 hot_topics，按点赞降序。keyword 对 title/summary 做模糊过滤（只搜已采集数据）。"""
+    """读最近一批 hot_topics，按加权热度分降序。keyword 对 title/summary 做模糊过滤（只搜已采集数据）。"""
     latest = await db.execute(
         select(HotTopic.fetched_at).order_by(HotTopic.fetched_at.desc()).limit(1)
     )
     latest_ts = latest.scalar_one_or_none()
 
-    stmt = select(HotTopic).order_by(HotTopic.likes.desc()).limit(limit)
+    stmt = (
+        select(HotTopic)
+        .order_by(HotTopic.rank_score.desc(), HotTopic.likes.desc())
+        .limit(limit)
+    )
     if latest_ts is not None:
         stmt = stmt.where(HotTopic.fetched_at == latest_ts)
     if category:
@@ -37,7 +41,9 @@ async def get_hot_notes(
             "summary": n.summary,
             "likes": n.likes,
             "collects": n.collects,
-            "url": n.url,
+            "comment_count": n.comment_count,
+            "inspiration_hint": n.inspiration_hint,
+            "quality_score": n.quality_score,
             "author": n.author,
             "fetched_at": n.fetched_at,
         }

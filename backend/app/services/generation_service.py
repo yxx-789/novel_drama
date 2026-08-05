@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.generator.llm_adapter import create_llm_adapter
 import re
 
+from app.generator.block_library import build_context
 from app.generator.prompts import (
     architecture_consistency_prompt,
     chapter_blueprint_prompt,
@@ -27,6 +28,26 @@ from app.generator.prompts import (
 from app.models.project import Project
 
 logger = logging.getLogger(__name__)
+
+
+def _prompt_context_for_project(project: Project) -> tuple[str, str]:
+    """
+    从 project.writing_config 提取 prompt 注入内容。
+
+    返回 (writing_context, creative_intent)：
+    - writing_context：由积木库 build_context 把用户各维度选择拼成的「写作上下文」。
+    - creative_intent：用户填写的剧情走向，作为高优先「创作意图」。
+
+    旧项目没有 writing_config 时两者均回退为空串，生成行为与改造前一致。
+    """
+    writing_config = getattr(project, "writing_config", None)
+    if not isinstance(writing_config, dict):
+        return "", ""
+    writing_context = build_context(writing_config)
+    creative_intent = writing_config.get("plot_direction")
+    if not isinstance(creative_intent, str):
+        creative_intent = ""
+    return writing_context, creative_intent.strip()
 
 
 def _make_adapter(temperature: float, llm_config: dict | None = None) -> object:
@@ -86,12 +107,16 @@ async def generate_architecture(
 
     adapter = _make_adapter(temperature=0.3, llm_config=llm_config)
 
+    writing_context, creative_intent = _prompt_context_for_project(project)
+
     # Step 1: Core seed
     prompt = core_seed_prompt.format(
         topic=project.topic or "",
         genre=project.genre or "",
         number_of_chapters=project.num_chapters or 10,
         word_number=project.word_number or 2000,
+        writing_context=writing_context,
+        creative_intent=creative_intent,
     )
     core_seed = await _invoke_with_retry(adapter, prompt)
     logger.info("Architecture step 1/5: Core seed generated")
@@ -100,6 +125,8 @@ async def generate_architecture(
     prompt = character_dynamics_prompt.format(
         user_guidance=user_guidance or "",
         core_seed=core_seed,
+        writing_context=writing_context,
+        creative_intent=creative_intent,
     )
     character_dynamics = await _invoke_with_retry(adapter, prompt)
     logger.info("Architecture step 2/5: Character dynamics generated")
@@ -108,6 +135,8 @@ async def generate_architecture(
     prompt = world_building_prompt.format(
         user_guidance=user_guidance or "",
         core_seed=core_seed,
+        writing_context=writing_context,
+        creative_intent=creative_intent,
     )
     world_building = await _invoke_with_retry(adapter, prompt)
     logger.info("Architecture step 3/5: World building generated")
@@ -118,6 +147,8 @@ async def generate_architecture(
         core_seed=core_seed,
         character_dynamics=character_dynamics,
         world_building=world_building,
+        writing_context=writing_context,
+        creative_intent=creative_intent,
     )
     plot_architecture = await _invoke_with_retry(adapter, prompt)
     logger.info("Architecture step 4/5: Plot architecture generated")
@@ -133,6 +164,8 @@ async def generate_architecture(
     # Step 5: Character state
     prompt = create_character_state_prompt.format(
         character_dynamics=character_dynamics,
+        writing_context=writing_context,
+        creative_intent=creative_intent,
     )
     character_state = await _invoke_with_retry(adapter, prompt)
     logger.info("Architecture step 5/5: Character state generated")
@@ -155,10 +188,14 @@ async def generate_directory(
 
     adapter = _make_adapter(temperature=0.3, llm_config=llm_config)
 
+    writing_context, creative_intent = _prompt_context_for_project(project)
+
     prompt = chapter_blueprint_prompt.format(
         user_guidance=user_guidance or "",
         novel_architecture=architecture_text or "",
         number_of_chapters=project.num_chapters or 10,
+        writing_context=writing_context,
+        creative_intent=creative_intent,
     )
     directory_text = await _invoke_with_retry(adapter, prompt)
     if not directory_text:
@@ -278,6 +315,7 @@ async def generate_chapter_draft(
         raise RuntimeError(f"Chapter {chapter_num} not found in directory")
 
     word_number = project.word_number or 2000
+    writing_context, creative_intent = _prompt_context_for_project(project)
 
     if chapter_num == 1:
         logger.info(f"Generating chapter {chapter_num} draft (first chapter) ...")
@@ -288,6 +326,8 @@ async def generate_chapter_draft(
             chapter_title=current_chapter["chapter_title"],
             chapter_summary=current_chapter["chapter_summary"],
             word_number=word_number,
+            writing_context=writing_context,
+            creative_intent=creative_intent,
         )
     else:
         logger.info(f"Generating chapter {chapter_num} draft ...")
@@ -304,6 +344,8 @@ async def generate_chapter_draft(
             chapter_title=current_chapter["chapter_title"],
             chapter_summary=current_chapter["chapter_summary"],
             word_number=word_number,
+            writing_context=writing_context,
+            creative_intent=creative_intent,
         )
 
     draft_text = await _invoke_with_retry(adapter, prompt)

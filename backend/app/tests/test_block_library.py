@@ -7,6 +7,7 @@ import pytest
 from app.generator.block_library import (
     AUDIENCE_BLOCKS,
     BACKGROUND_BLOCKS,
+    BACKGROUND_SYSTEMS,
     CAST_SCALE_BLOCKS,
     CORE_GENRE_BLOCKS,
     CORE_GENRES,
@@ -15,12 +16,18 @@ from app.generator.block_library import (
     DIMENSION_LABELS,
     DIMENSION_OPTIONS,
     DIMENSION_ORDER,
+    GENRE_HARD_BACKGROUND,
+    HARD_CONFLICTS,
     HOOK_BLOCKS,
     INTERNAL_FLAVORS,
+    SOFT_WARNINGS,
     STRUCTURE_BLOCKS,
     STYLE_BLOCKS,
     build_context,
+    check_hard_conflicts,
+    check_soft_warnings,
     roll_internal_flavor,
+    validate_writing_config,
 )
 
 MIN_FRAGMENT_LEN = 50
@@ -351,3 +358,191 @@ def test_roll_internal_flavor_non_string_genre_guard():
     assert roll_internal_flavor({"core_genre": None})["internal_flavor"] == []
     assert roll_internal_flavor({"core_genre": ["玄幻"]})["internal_flavor"] == []
     assert roll_internal_flavor({"core_genre": {"x": 1}})["internal_flavor"] == []
+
+
+# ---------- 8. 写作配置冲突规则引擎 ----------
+def test_rule_data_structures_complete():
+    # 规则数据齐全：4 背景系、题材硬禁背景、硬冲突、软警告非空
+    assert set(BACKGROUND_SYSTEMS.keys()) == {"古风", "山野", "现代", "未来"}
+    assert BACKGROUND_SYSTEMS["山野"]["neutral"] is True
+    assert GENRE_HARD_BACKGROUND == {"历史": ["现代", "未来"], "体育": ["古风", "未来"]}
+    assert HARD_CONFLICTS and SOFT_WARNINGS
+    # 背景系成员都来自 BACKGROUND_BLOCKS，且不重叠
+    all_bg = [b for info in BACKGROUND_SYSTEMS.values() for b in info["背景块"]]
+    assert len(all_bg) == len(set(all_bg)) == len(BACKGROUND_BLOCKS), "背景块未全覆盖或不重复"
+
+
+# ---------- 8.1 硬冲突 ----------
+def test_hard_conflict_background_cross_system():
+    # 背景跨系（同维多选）：古风 + 未来 不能并存
+    hard = check_hard_conflicts({"background": ["宗门林立", "末世废土"]})
+    assert hard, "背景跨系（古风+未来）应报硬冲突"
+    assert any("背景跨系" in m for m in hard)
+
+
+def test_hard_conflict_background_neutral_pairs_any_system():
+    # 山野中性系不与任何系冲突（山野 + 未来 不报）
+    assert check_hard_conflicts({"background": ["山野灵异", "星际远征"]}) == []
+    assert check_hard_conflicts({"background": ["山野灵异", "都市霓虹"]}) == []
+
+
+def test_hard_conflict_background_string_single_no_cross():
+    # 背景传字符串（单选）永不触发跨系
+    assert check_hard_conflicts({"background": "宗门林立"}) == []
+
+
+def test_hard_conflict_genre_history_x_modern():
+    # 历史 × 现代背景（都市霓虹）
+    hard = check_hard_conflicts({"core_genre": "历史", "background": "都市霓虹"})
+    assert hard
+    assert any("历史" in m and "都市霓虹" in m for m in hard)
+
+
+def test_hard_conflict_genre_history_x_future():
+    # 历史 × 未来背景（星际远征）
+    hard = check_hard_conflicts({"core_genre": "历史", "background": "星际远征"})
+    assert hard and any("历史" in m and "星际远征" in m for m in hard)
+
+
+def test_hard_conflict_genre_sports_x_ancient():
+    # 体育 × 古风背景（宗门林立）
+    hard = check_hard_conflicts({"core_genre": "体育", "background": "宗门林立"})
+    assert hard and any("体育" in m and "宗门林立" in m for m in hard)
+
+
+def test_hard_conflict_genre_mixed_background_partial():
+    # 多选背景中只要含一个禁系即触发（历史 + 古风 + 未来）
+    hard = check_hard_conflicts({"core_genre": "历史", "background": ["王朝庙堂", "星际远征"]})
+    assert hard and any("星际远征" in m for m in hard)
+
+
+def test_hard_conflict_cast_x_structure_lean_x_ensemble():
+    # 精简×群像：独角戏（精简卡司）× 群像交织（多线群像结构）
+    hard = check_hard_conflicts({"cast_scale": "独角戏", "structure": "群像交织"})
+    assert hard
+    assert any("独角戏" in m and "群像交织" in m for m in hard)
+
+
+def test_hard_conflict_hook_invincible_x_face_slap():
+    # 无敌流×打脸：金手指系统 + 打脸爽感
+    hard = check_hard_conflicts({"hook": ["金手指系统", "打脸爽感"]})
+    assert hard
+    assert any("金手指系统" in m and "打脸爽感" in m for m in hard)
+
+
+def test_hard_conflict_internal_flavor_soft_x_strong():
+    # 娇软×女强：言情内部风味 娇软治愈 + 女强飒爽
+    hard = check_hard_conflicts(
+        {"core_genre": "言情", "internal_flavor": ["娇软治愈", "女强飒爽"]}
+    )
+    assert hard
+    assert any("娇软治愈" in m and "女强飒爽" in m for m in hard)
+
+
+def test_hard_conflict_missing_dim_no_conflict():
+    # 缺失维度视为未选、不报冲突
+    assert check_hard_conflicts({}) == []
+    assert check_hard_conflicts(None) == []
+    assert check_hard_conflicts({"core_genre": "历史"}) == []
+    assert check_hard_conflicts({"background": "都市霓虹"}) == []
+
+
+def test_hard_conflict_unknown_values_no_crash():
+    # 未知取值不崩溃、不误报
+    assert check_hard_conflicts({"background": ["未知背景"], "cast_scale": "未知规模"}) == []
+    assert check_hard_conflicts({"core_genre": "未知题材", "background": "宗门林立"}) == []
+
+
+# ---------- 8.2 软警告 ----------
+def test_soft_warning_genre_x_background_fusion():
+    # 罕见融合：仙侠 × 末世废土
+    soft = check_soft_warnings({"core_genre": "仙侠", "background": "末世废土"})
+    assert soft
+    assert any("罕见融合" in m and "仙侠" in m and "末世废土" in m for m in soft)
+    # 罕见融合是软警告而非硬冲突
+    assert check_hard_conflicts({"core_genre": "仙侠", "background": "末世废土"}) == []
+
+
+def test_soft_warning_style_x_audience_tension():
+    # 文风×受众张力：冷峻写实 × 轻松解压
+    soft = check_soft_warnings({"style": "冷峻写实", "audience": "轻松解压"})
+    assert soft
+    assert any("冷峻写实" in m and "轻松解压" in m for m in soft)
+
+
+def test_soft_warning_hook_x_genre_mismatch():
+    # 卖点错位：情感拉扯 × 军事
+    soft = check_soft_warnings({"core_genre": "军事", "hook": ["情感拉扯"]})
+    assert soft and any("卖点错位" in m for m in soft)
+
+
+def test_soft_warning_structure_x_background():
+    # 结构×背景：日常流 × 星际远征
+    soft = check_soft_warnings({"structure": "日常流", "background": "星际远征"})
+    assert soft and any("结构与背景" in m for m in soft)
+
+
+def test_soft_warning_reborn_x_transmigrate():
+    # 重生×穿越冗余
+    soft = check_soft_warnings({"hook": ["重生逆袭", "穿越异世"]})
+    assert soft and any("重生" in m and "穿越" in m for m in soft)
+
+
+def test_soft_warning_plot_vs_setting():
+    # 剧情走向×设定：剧情写现代都市，背景却是星际远征
+    soft = check_soft_warnings(
+        {"background": "星际远征", "plot_direction": "主角在现代都市的职场一路逆袭"}
+    )
+    assert soft and any("剧情走向" in m and "星际远征" in m for m in soft)
+
+
+def test_soft_warning_plot_matches_background_no_warning():
+    # 剧情走向与背景同系不报
+    assert check_soft_warnings(
+        {"background": "都市霓虹", "plot_direction": "主角在现代都市的职场一路逆袭"}
+    ) == []
+    # 剧情走向遇上中性背景（山野）也不报
+    assert check_soft_warnings(
+        {"background": "山野灵异", "plot_direction": "主角在现代都市的职场一路逆袭"}
+    ) == []
+
+
+def test_soft_warning_missing_plot_or_background_no_warning():
+    # 剧情走向未填 / 背景未选 → 不报剧情走向冲突
+    assert check_soft_warnings({"background": "星际远征"}) == []
+    assert check_soft_warnings({"plot_direction": "主角在现代都市打拼"}) == []
+    assert check_soft_warnings({}) == []
+    assert check_soft_warnings(None) == []
+
+
+# ---------- 8.3 validate_writing_config 汇总 ----------
+def test_validate_writing_config_shape():
+    res = validate_writing_config({"background": ["宗门林立", "末世废土"]})
+    assert set(res.keys()) == {"hard", "soft", "valid"}
+    assert isinstance(res["hard"], list) and isinstance(res["soft"], list)
+    assert res["valid"] is False
+
+
+def test_validate_clean_config_no_conflict():
+    # 无冲突配置：硬软均空、valid=True
+    res = validate_writing_config(DEFAULT_RECIPES["玄幻"])
+    assert res["hard"] == [] and res["soft"] == []
+    assert res["valid"] is True
+
+
+def test_validate_mixed_hard_and_soft():
+    # 硬冲突 + 软警告并存时：valid=False，且两类都返回
+    res = validate_writing_config(
+        {"core_genre": "历史", "background": "都市霓虹", "style": "冷峻写实", "audience": "轻松解压"}
+    )
+    assert res["valid"] is False
+    assert res["hard"]
+    assert res["soft"]
+
+
+@pytest.mark.parametrize("genre", CORE_GENRES)
+def test_all_default_recipes_validate_clean(genre):
+    # 全部默认配方不得触发任何硬冲突或软警告（保证既有创建流程无冲突行为不变）
+    res = validate_writing_config(DEFAULT_RECIPES[genre])
+    assert res["valid"] is True, f"{genre} 默认配方不应有硬冲突：{res['hard']}"
+    assert res["soft"] == [], f"{genre} 默认配方不应有软警告：{res['soft']}"

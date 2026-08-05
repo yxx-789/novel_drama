@@ -1577,6 +1577,332 @@ INTERNAL_FLAVORS = {
 # 内部风味覆盖的核心题材（应与 CORE_GENRES 完全一致）
 INTERNAL_FLAVOR_GENRES = list(INTERNAL_FLAVORS.keys())
 
+# ======================================================================
+# 八、写作配置冲突规则引擎（V3 P2）
+# ======================================================================
+# 用户在 7 维积木中自由组合时，可能选出互相矛盾、难以同时成立的配置。
+# 本段提供「规则数据 + 检测函数」：
+#   - 硬冲突（HARD）：配置自相矛盾、无法同时成立 → 创建时应拒绝；
+#   - 软警告（SOFT）：组合罕见 / 有张力，但并非不可能 → 提示用户确认，不阻断。
+# 规则数据（BACKGROUND_SYSTEMS / GENRE_HARD_BACKGROUND / HARD_CONFLICTS / SOFT_WARNINGS）
+# 是前后端唯一的真源（前端用轻量副本，向后端看齐）。
+# 注意：config 各维度可能是字符串或数组（background / hook / internal_flavor 为多选），
+# 检测函数统一兼容两种形态；缺失维度视为未选、不报冲突；未知取值不崩溃。
+
+# ----------------------------------------------------------------------
+# 8.1 背景世界系分组
+# ----------------------------------------------------------------------
+BACKGROUND_SYSTEMS = {
+    "古风": {"背景块": ["宗门林立", "王朝庙堂", "大陆争霸"], "neutral": False},
+    "山野": {"背景块": ["山野灵异"], "neutral": True},  # 中性：与任意系搭配都不冲突
+    "现代": {"背景块": ["都市霓虹", "学院青春"], "neutral": False},
+    "未来": {"背景块": ["末世废土", "星际远征"], "neutral": False},
+}
+
+# ----------------------------------------------------------------------
+# 8.2 题材硬禁背景系
+# ----------------------------------------------------------------------
+GENRE_HARD_BACKGROUND = {
+    "历史": ["现代", "未来"],
+    "体育": ["古风", "未来"],
+}
+
+# ----------------------------------------------------------------------
+# 8.3 硬冲突（跨维度 / 同维度互斥）
+# ----------------------------------------------------------------------
+# 字段：a_dim / a_value 与 b_dim / b_value 为发生冲突的两个维度取值；
+#       reason 为面向用户的解释文案。
+# 概念名（brief / 设计稿）→ 实际积木值映射：
+#   精简   → 独角戏 / 全员工具人（精简卡司）
+#   群像   → 群像交织（多线群像结构）
+#   无敌流 → 金手指系统（开局外挂近乎无敌）
+#   打脸   → 打脸爽感
+#   娇软   → 娇软治愈（言情内部风味）
+#   女强   → 女强飒爽（言情内部风味）
+HARD_CONFLICTS = [
+    {
+        "a_dim": "cast_scale", "a_value": "独角戏",
+        "b_dim": "structure", "b_value": "群像交织",
+        "reason": "精简卡司无法承载多线群像结构，请保留其一",
+    },
+    {
+        "a_dim": "cast_scale", "a_value": "全员工具人",
+        "b_dim": "structure", "b_value": "群像交织",
+        "reason": "精简卡司无法承载多线群像结构，请保留其一",
+    },
+    {
+        "a_dim": "hook", "a_value": "金手指系统",
+        "b_dim": "hook", "b_value": "打脸爽感",
+        "reason": "无敌流主角不存在「被轻视」的真实威胁，打脸套路失去张力，请保留其一",
+    },
+    {
+        "a_dim": "internal_flavor", "a_value": "娇软治愈",
+        "b_dim": "internal_flavor", "b_value": "女强飒爽",
+        "reason": "娇软与女强人设相斥，请保留其一",
+    },
+]
+
+# ----------------------------------------------------------------------
+# 8.4 软警告
+# （罕见融合 / 卖点错位 / 文风×受众张力 / 文风×题材 / 结构×受众 / 规模×题材 /
+#   结构×背景 / 重生×穿越冗余 / 剧情走向×设定 关键词冲突）
+# ----------------------------------------------------------------------
+# kind：
+#   pair                     —— dim_a 取值 × dim_b 取值 的二元组合命中即提示
+#   mismatch                 —— dim 取值 × base_dim 取值（mapping: 值 → 不适配的 base 值列表）
+#   both                     —— dim 中同时包含 values 全部取值即提示（功能冗余）
+#   keyword_vs_background    —— plot_direction 关键词 vs 所选背景系
+SOFT_WARNINGS = [
+    {
+        "id": "genre_x_background_fusion",
+        "kind": "pair",
+        "dim_a": "core_genre",
+        "dim_b": "background",
+        "pairs": [
+            ("仙侠", "末世废土"), ("仙侠", "星际远征"),
+            ("历史", "星际远征"), ("体育", "末世废土"),
+            ("武侠", "星际远征"), ("都市", "末世废土"),
+            ("言情", "末世废土"), ("言情", "星际远征"),
+        ],
+        "message": "罕见融合：{a} × {b} 的组合较为罕见，驾驭难度高，建议先确认世界观能自洽。",
+    },
+    {
+        "id": "hook_x_genre_mismatch",
+        "kind": "mismatch",
+        "dim": "hook",
+        "base_dim": "core_genre",
+        "mapping": {
+            "情感拉扯": ["军事", "体育", "灵异"],
+            "真相解谜": ["体育", "玄幻", "仙侠"],
+            "金手指系统": ["言情", "历史"],
+            "群像冒险": ["言情", "灵异"],
+            "升级变强": ["言情"],
+            "反套路": ["言情", "体育"],
+        },
+        "message": "卖点错位：{a} 卖点在 {b} 题材下较难施展，建议换成更契合题材的卖点。",
+    },
+    {
+        "id": "style_x_audience_tension",
+        "kind": "pair",
+        "dim_a": "style",
+        "dim_b": "audience",
+        "pairs": [
+            ("冷峻写实", "轻松解压"), ("悬疑紧张", "轻松解压"),
+            ("温暖治愈", "猎奇暗黑"), ("热血澎湃", "文艺情感"),
+            ("诗意典雅", "爽文快感"), ("硬核专业", "文艺情感"),
+            ("华丽炫技", "专业考据"),
+        ],
+        "message": "文风与受众张力：{a} 文风与 {b} 受众的阅读期待相左，需在行文上做平衡。",
+    },
+    {
+        "id": "style_x_genre",
+        "kind": "pair",
+        "dim_a": "style",
+        "dim_b": "core_genre",
+        "pairs": [
+            ("冷峻写实", "言情"), ("悬疑紧张", "言情"),
+            ("温暖治愈", "悬疑"), ("温暖治愈", "军事"),
+            ("热血澎湃", "言情"), ("硬核专业", "言情"),
+            ("诗意典雅", "体育"),
+        ],
+        "message": "文风与题材张力：{a} 文风与 {b} 题材的主流调性相左，可能水土不服。",
+    },
+    {
+        "id": "structure_x_audience",
+        "kind": "pair",
+        "dim_a": "structure",
+        "dim_b": "audience",
+        "pairs": [
+            ("日常流", "爽文快感"), ("长线连载", "爽文快感"), ("日常流", "硬核烧脑"),
+        ],
+        "message": "结构与受众张力：{a} 结构与 {b} 受众的节奏期待相左，可能读起来拖沓或不适。",
+    },
+    {
+        "id": "cast_x_genre",
+        "kind": "pair",
+        "dim_a": "cast_scale",
+        "dim_b": "core_genre",
+        "pairs": [
+            ("群像", "言情"), ("群像", "灵异"), ("双主角", "体育"), ("独角戏", "军事"),
+        ],
+        "message": "规模与题材张力：{a} 卡司规模与 {b} 题材的主流形态相左。",
+    },
+    {
+        "id": "structure_x_background",
+        "kind": "pair",
+        "dim_a": "structure",
+        "dim_b": "background",
+        "pairs": [
+            ("日常流", "星际远征"), ("日常流", "末世废土"),
+            ("日常流", "大陆争霸"), ("倒叙钩子", "山野灵异"),
+        ],
+        "message": "结构与背景张力：{a} 结构与 {b} 背景的氛围相左。",
+    },
+    {
+        "id": "reborn_x_transmigrate",
+        "kind": "both",
+        "dim": "hook",
+        "values": ["重生逆袭", "穿越异世"],
+        "message": "重生×穿越冗余：两个卖点都依赖「先知优势」，功能重叠，建议保留其一。",
+    },
+    {
+        "id": "plot_vs_setting",
+        "kind": "keyword_vs_background",
+        "dim": "plot_direction",
+        "background_dim": "background",
+        "keywords": {
+            "现代": "现代", "都市": "现代", "校园": "现代", "学院": "现代",
+            "星际": "未来", "末世": "未来", "废土": "未来",
+            "古代": "古风", "王朝": "古风", "宗门": "古风", "武侠": "古风", "江湖": "古风",
+            "山村": "山野", "乡村": "山野", "民俗": "山野",
+        },
+        "message": "剧情走向冲突：剧情涉及「{keywords}」类设定，与当前所选背景（{background}）不一致，请确认是刻意设计。",
+    },
+]
+
+# ----------------------------------------------------------------------
+# 8.5 检测辅助
+# ----------------------------------------------------------------------
+def _config_values(config: dict, dim: str) -> list:
+    """取维度在 config 中的取值列表（兼容 字符串 / 数组 / 缺失 / 未知类型）。"""
+    v = config.get(dim) if isinstance(config, dict) else None
+    if v is None:
+        return []
+    if isinstance(v, (list, tuple, set, frozenset)):
+        return [x for x in v if isinstance(x, str)]
+    return [v] if isinstance(v, str) else []
+
+
+def _config_has(config: dict, dim: str, value: str) -> bool:
+    """维度取值中是否包含 value（兼容字符串 / 数组）。"""
+    return value in _config_values(config, dim)
+
+
+def _background_system(bg: str) -> str | None:
+    """返回背景块所属的世界系名；未知背景返回 None。"""
+    for sys_name, sys_info in BACKGROUND_SYSTEMS.items():
+        if bg in sys_info["背景块"]:
+            return sys_name
+    return None
+
+
+def _dedupe(items: list) -> list:
+    """按序去重，保持返回顺序稳定。"""
+    seen = set()
+    out = []
+    for it in items:
+        if it not in seen:
+            seen.add(it)
+            out.append(it)
+    return out
+
+
+# ----------------------------------------------------------------------
+# 8.6 检测函数
+# ----------------------------------------------------------------------
+def check_hard_conflicts(config: dict) -> list:
+    """返回硬冲突提示列表（空 = 无冲突）。
+
+    覆盖：背景跨系（同维多选）、题材×背景系、规模×结构、卖点互斥（含内部风味互斥）。
+    缺失维度视为未选、不报冲突；未知取值不崩溃。
+    """
+    if not isinstance(config, dict) or not config:
+        return []
+    hard = []
+
+    # (1) 背景跨系：同一背景多选时，非中性世界系之间不能并存
+    bg_values = _config_values(config, "background")
+    if len(bg_values) >= 2:
+        system_blocks = {}
+        for bg in bg_values:
+            sys_name = _background_system(bg)
+            if sys_name:
+                system_blocks.setdefault(sys_name, []).append(bg)
+        non_neutral = [s for s in system_blocks if not BACKGROUND_SYSTEMS[s]["neutral"]]
+        if len(non_neutral) > 1:
+            parts = []
+            for s in sorted(non_neutral):
+                parts.append(f"{s}（{'、'.join(system_blocks[s])}）")
+            hard.append(
+                "背景跨系冲突：" + "、".join(parts)
+                + " 属于不同世界系，不能同时选择（山野中性系除外）。"
+            )
+
+    # (2) 题材 × 背景系（历史禁现代/未来；体育禁古风/未来）
+    for genre in _config_values(config, "core_genre"):
+        banned = GENRE_HARD_BACKGROUND.get(genre, [])
+        if not banned:
+            continue
+        for bg in bg_values:
+            sys_name = _background_system(bg)
+            if sys_name in banned:
+                hard.append(f"题材硬冲突：{genre} 题材不兼容{sys_name}系背景「{bg}」。")
+
+    # (3) 规模×结构 / 卖点互斥（含内部风味互斥）——按 HARD_CONFLICTS 数据匹配
+    for rule in HARD_CONFLICTS:
+        if (
+            _config_has(config, rule["a_dim"], rule["a_value"])
+            and _config_has(config, rule["b_dim"], rule["b_value"])
+        ):
+            hard.append(f"硬冲突：{rule['a_value']} × {rule['b_value']} —— {rule['reason']}")
+
+    return _dedupe(hard)
+
+
+def check_soft_warnings(config: dict) -> list:
+    """返回软警告提示列表（空 = 无提示）。
+
+    按 SOFT_WARNINGS 数据匹配：罕见融合 / 卖点错位 / 文风×受众 / 文风×题材 /
+    结构×受众 / 规模×题材 / 结构×背景 / 重生×穿越冗余 / 剧情走向×设定。
+    剧情走向用关键词检测（现代/都市/星际/末世/古代/宗门 等词）vs 所选背景系。
+    """
+    if not isinstance(config, dict) or not config:
+        return []
+    soft = []
+    for rule in SOFT_WARNINGS:
+        kind = rule["kind"]
+        if kind == "pair":
+            a_vals = _config_values(config, rule["dim_a"])
+            b_vals = _config_values(config, rule["dim_b"])
+            for a, b in rule["pairs"]:
+                if a in a_vals and b in b_vals:
+                    soft.append(rule["message"].format(a=a, b=b))
+        elif kind == "mismatch":
+            dim_vals = _config_values(config, rule["dim"])
+            base_vals = _config_values(config, rule["base_dim"])
+            for dim_val, bad_bases in rule["mapping"].items():
+                if dim_val in dim_vals:
+                    for base in bad_bases:
+                        if base in base_vals:
+                            soft.append(rule["message"].format(a=dim_val, b=base))
+        elif kind == "both":
+            vals = _config_values(config, rule["dim"])
+            if all(v in vals for v in rule["values"]):
+                soft.append(rule["message"])
+        elif kind == "keyword_vs_background":
+            text = config.get(rule["dim"])
+            bg_values = _config_values(config, rule["background_dim"])
+            if isinstance(text, str) and text.strip() and bg_values:
+                bg_systems = {_background_system(b) for b in bg_values if _background_system(b)}
+                has_neutral = any(_background_system(b) == "山野" for b in bg_values)
+                mismatched = [
+                    kw for kw, sys in rule["keywords"].items()
+                    if kw in text and sys not in bg_systems and not has_neutral
+                ]
+                if mismatched:
+                    soft.append(rule["message"].format(
+                        keywords="、".join(mismatched),
+                        background="、".join(bg_values),
+                    ))
+    return _dedupe(soft)
+
+
+def validate_writing_config(config: dict) -> dict:
+    """校验入口：汇总硬冲突 + 软警告，valid = 无硬冲突（软警告不阻断）。"""
+    hard = check_hard_conflicts(config)
+    soft = check_soft_warnings(config)
+    return {"hard": hard, "soft": soft, "valid": not hard}
+
 
 def get_block(dimension: str, option: str) -> dict | None:
     """按维度 + 选项名取积木块；不存在返回 None。"""

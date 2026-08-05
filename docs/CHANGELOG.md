@@ -2,6 +2,20 @@
 
 ## [未发布]
 
+### 灵感策展（LLM 策展 + 加权排序）
+
+- **LLM 策展**：采集器在入库前先取正文，再让 LLM 判断创作价值，只保留有叙事潜力的热点并附灵感点与质量分
+  - `scripts/xhs_hot_collector.py` 每分类按互动热度取 Top N，再取前 K 条进入策展：`fetch_detail()` 取正文（截断 2000 字）→ `_llm_curate()` 单次请求批量输出 `[{i, usable, inspiration_hint, quality_score}]`
+  - `usable=false` 直接过滤不入库；`usable=true` 带上灵感点（`inspiration_hint`）与 1-5 创作价值分（`quality_score`，依据人物冲突 / 戏剧情境 / 情感张力 / 意外转折等叙事潜力）
+  - 未配置 `LLM_API_KEY` 或 LLM 调用失败时全部放行（无灵感点、质量分 0），保证采集链路不中断
+  - 采样量可用环境变量调整：`TOP_N_PER_CATEGORY`（默认 20）、`CURATE_TOP_PER_CATEGORY`（默认 8）
+
+- **加权排序**：新增 `compute_rank_score()`，`rank_score = likes×1.0 + collects×1.2 + shares×1.5 + comment_count×2.0 + quality_score×300`；`GET /api/inspiration/hot` 改为按 `rank_score` 降序（同分按点赞降序）
+
+- **hot_topics 新列**：Alembic migration `d8c4a212986c_add_inspiration_curation_columns.py` 新增 `comment_count` / `inspiration_hint` / `quality_score` / `rank_score`（`server_default` 回填存量行后移除默认值）；`backend/app/models/inspiration.py` HotTopic 同步新增 4 列
+
+- **前端灵感点展示**：`frontend/src/pages/ProjectDetail/InspirationTab.tsx` 热点卡片在 `inspiration_hint` 非空时展示 💡 灵感点；`frontend/src/api/inspiration.ts` `HotNote` 类型新增 `comment_count` / `inspiration_hint` / `quality_score` 字段
+
 ### 主页创作灵感 + 主页 AI 助手
 
 - **主页创作灵感区（完整复用 InspirationTab）**
@@ -31,7 +45,7 @@
   - `GET /api/inspiration/categories` —— 返回预设灵感分类名列表（唯一真源：`backend/app/core/preset_categories.py`，32 个分类，采集器与后端共用）
   - `GET /api/inspiration/hot` —— 返回最近一批（`fetched_at` 为最新批次）热点，按点赞降序；支持 `category` / `keyword` 过滤、`limit`（默认 20，上限 50）
   - `POST /api/projects/{id}/inspiration` —— 一键导入：设为项目主题并写入 `inspiration` 资产（幂等覆盖），返回 `{success, topic}`
-  - `GET /api/inspiration/hot` 响应包含 note_id / title / summary / likes / collects / url / author / fetched_at，**不含 source 字段**
+  - `GET /api/inspiration/hot` 响应包含 note_id / title / summary / likes / collects / comment_count / inspiration_hint / quality_score / author / fetched_at，**不含 source / url 字段**
 
 - **热点采集器脚本（每日一次）**
   - 新增 `scripts/xhs_hot_collector.py` —— 通过 MCP 服务搜索各分类关键词 → 规范化 → 批量 upsert 写入 `hot_topics`

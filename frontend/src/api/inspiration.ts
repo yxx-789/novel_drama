@@ -6,7 +6,6 @@ export interface HotNote {
   summary: string | null
   likes: number
   collects: number
-  url: string | null
   author: string | null
   fetched_at: string
   comment_count?: number

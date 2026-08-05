@@ -1,4 +1,4 @@
-"""小红书热点采集器：每天把热点写入 hot_topics 表。独立运行，不参与 Web 服务。"""
+"""热点采集器：每天把热点写入 hot_topics 表。独立运行，不参与 Web 服务。"""
 import ast
 import json
 import os
@@ -107,6 +107,21 @@ def fetch_detail(client: McpClient, feed_id: str, xsec_token: str) -> str:
         return ""
 
 
+def _safe_int(v, default=0):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_bool(v, default=True):
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        return v.strip().lower() in ("1", "true", "yes", "是", "可用")
+    return default
+
+
 def _llm_curate(notes: list[dict]) -> list[dict]:
     """批量策展：判断能否当创作种子 + 生成灵感点 + 质量分。无 LLM Key 时全部放行。"""
     api_key = os.getenv("LLM_API_KEY", "")
@@ -145,10 +160,12 @@ def _llm_curate(notes: list[dict]) -> list[dict]:
         by_i = {r.get("i"): r for r in results if isinstance(r, dict)}
         for idx, n in enumerate(notes):
             r = by_i.get(idx, {})
+            score = _safe_int(r.get("quality_score"))
+            score = 0 if score <= 0 else max(1, min(5, score))
             n.update({
-                "usable": bool(r.get("usable", True)),
+                "usable": _safe_bool(r.get("usable", True)),
                 "inspiration_hint": str(r.get("inspiration_hint") or "")[:300],
-                "quality_score": int(r.get("quality_score") or 0),
+                "quality_score": score,
             })
     except Exception as e:
         print(f"LLM 策展失败（放行全部）: {e}")

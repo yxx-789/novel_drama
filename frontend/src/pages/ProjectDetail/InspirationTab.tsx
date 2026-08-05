@@ -49,7 +49,6 @@ export default function InspirationTab({ projectId }: Props) {
         summary: note.summary || '',
         likes: String(note.likes),
         author: note.author || '',
-        url: note.url || '',
       })
       navigate(`/projects/create?${params.toString()}`)
     }
@@ -88,7 +87,7 @@ export default function InspirationTab({ projectId }: Props) {
               <div className="min-w-0">
                 <p className="text-sm font-medium text-slate-800 truncate">{note.title}</p>
                 {note.inspiration_hint && (
-                  <p className="text-xs text-indigo-600 mt-1 leading-relaxed">💡 {note.inspiration_hint}</p>
+                  <p className="text-xs text-indigo-600 mt-1 leading-relaxed line-clamp-2">💡 {note.inspiration_hint}</p>
                 )}
                 {note.summary && <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{note.summary}</p>}
                 <p className="text-xs text-slate-400 mt-1">👍 {note.likes} · {note.author || '未知作者'}</p>

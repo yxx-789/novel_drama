@@ -15,7 +15,6 @@ function ProjectCreate() {
     summary: searchParams.get('summary') || '',
     likes: Number(searchParams.get('likes') || 0),
     collects: 0,
-    url: searchParams.get('url') || '',
     author: searchParams.get('author') || '',
     fetched_at: new Date().toISOString(),
   }

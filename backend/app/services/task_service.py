@@ -25,7 +25,11 @@ from app.services.generation_service import (
     synthesize_book_summary,
     update_character_cards,
 )
-from app.generator.foreshadowing_ledger import build_foreshadowing_reminder, merge_foreshadowing_delta
+from app.generator.foreshadowing_ledger import (
+    build_foreshadowing_reminder,
+    build_known_by_constraints,
+    merge_foreshadowing_delta,
+)
 from app.generator.genre_methodology import get_genre_methodology
 from app.generator.world_state_templates import get_template
 from app.services.inspiration_service import build_inspiration_guidance
@@ -325,7 +329,7 @@ async def _save_asset_json(db: AsyncSession, project_id: str, asset_type: str, c
 async def _build_l2_foreshadowing_context(
     db: AsyncSession, project_id: str, chapter_num: int, genre: str
 ) -> str:
-    """写前组装 L2 上下文：已冻结 arc 摘要（最近完成 arc）+ 伏笔/副线提醒。
+    """写前组装 L2 上下文：已冻结 arc 摘要（最近完成 arc）+ 全书脉络（L3）+ 伏笔/副线提醒 + known_by 信息约束。
 
     纯资产读取 + 纯规则，零新增 LLM 调用；无内容返回空串。
     """
@@ -341,15 +345,27 @@ async def _build_l2_foreshadowing_context(
             if isinstance(summary, str) and summary.strip():
                 parts.append(f"【已冻结 arc 摘要】{summary.strip()}")
 
-    # 伏笔/副线提醒（methodology 与 merge_foreshadowing_delta 内取同源题材参数）
+    # 伏笔/副线提醒 + known_by 信息约束（methodology 与 merge_foreshadowing_delta 内取同源题材参数）
     ledger = await _get_asset_json(db, project_id, "foreshadowing")
     if isinstance(ledger, dict):
         methodology = get_genre_methodology(genre)
         reminder = build_foreshadowing_reminder(
             ledger, current_chapter=chapter_num, methodology=methodology
         )
+        # L3 全书脉络：仅当有伏笔提醒（需回溯早期细节）时注入，避免常驻 token
         if reminder:
+            bs = arc_data.get("book_summary") if isinstance(arc_data, dict) else None
+            if isinstance(bs, dict):
+                book_summary = bs.get("summary")
+                if isinstance(book_summary, str) and book_summary.strip():
+                    parts.append(f"【全书脉络】{book_summary.strip()}")
             parts.append(f"【伏笔/副线提醒】{reminder}")
+        # known_by 信息约束：每章注入（最近触碰 + 提醒命中），防角色说出不该知道的事
+        constraints = build_known_by_constraints(
+            ledger, current_chapter=chapter_num, methodology=methodology
+        )
+        if constraints:
+            parts.append(f"【信息约束】\n{constraints}")
 
     return "\n\n".join(parts)
 

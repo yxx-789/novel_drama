@@ -191,6 +191,45 @@ def merge_foreshadowing_delta(ledger: dict, memory: dict, genre: str, chapter_nu
     return ledger
 
 
+def _reminder_flags(e: dict, current_chapter: int, touch_max: int) -> list[tuple[str, str]]:
+    """单条伏笔的提醒判定器（与 build_foreshadowing_reminder / build_known_by_constraints 共享）。
+
+    返回 [(kind, suffix)]；kind ∈ overdue | recoverable | idle；无命中返回 []。
+    - overdue：open/touched 且 `current_chapter - last_touch > touch_max` →「该碰一下」
+    - recoverable：open/touched 且 `current_chapter ∈ planned_recovery_range` →「该准备回收」
+    - idle：subplot=true 且闲置 > SUBPLOT_IDLE_THRESHOLD 章 →「副线闲置」
+
+    已 recovered/abandoned 一律不参与；结构异常安全返回 []。
+    """
+    if not isinstance(e, dict):
+        return []
+    if e.get("status") in ("recovered", "abandoned"):
+        return []
+    last = e.get("last_touch_chapter")
+    if not isinstance(last, int):
+        last = e.get("added_chapter")
+    if not isinstance(last, int):
+        return []
+    gap = current_chapter - last
+
+    flags = []
+    status = e.get("status", "open")
+    if status in ("open", "touched"):
+        if gap > touch_max:
+            flags.append(("overdue", f"已{gap}章未碰"))
+        rng = e.get("planned_recovery_range")
+        if isinstance(rng, (list, tuple)) and len(rng) == 2:
+            try:
+                lo, hi = int(rng[0]), int(rng[1])
+            except (TypeError, ValueError):
+                lo, hi = 0, 0
+            if lo <= current_chapter <= hi:
+                flags.append(("recoverable", "进入回收窗口"))
+    if e.get("subplot") and gap > SUBPLOT_IDLE_THRESHOLD:
+        flags.append(("idle", f"已闲置{gap}章"))
+    return flags
+
+
 def build_foreshadowing_reminder(ledger: dict, current_chapter: int, methodology: dict) -> str:
     """
     写前生成伏笔/副线提醒文本；无命中返回空串。
@@ -221,32 +260,17 @@ def build_foreshadowing_reminder(ledger: dict, current_chapter: int, methodology
     for e in entries:
         if not isinstance(e, dict):
             continue
-        if e.get("status") in ("recovered", "abandoned"):
-            continue
         name = str(e.get("name", "")).strip()
         if not name:
             continue
-        last = e.get("last_touch_chapter")
-        if not isinstance(last, int):
-            last = e.get("added_chapter")
-        if not isinstance(last, int):
-            continue
-        gap = current_chapter - last
-
-        status = e.get("status", "open")
-        if status in ("open", "touched"):
-            if gap > touch_max:
-                overdue.append(f"{name}（已{gap}章未碰）")
-            rng = e.get("planned_recovery_range")
-            if isinstance(rng, (list, tuple)) and len(rng) == 2:
-                try:
-                    lo, hi = int(rng[0]), int(rng[1])
-                except (TypeError, ValueError):
-                    lo, hi = 0, 0
-                if lo <= current_chapter <= hi:
-                    recoverable.append(name)
-        if e.get("subplot") and gap > SUBPLOT_IDLE_THRESHOLD:
-            idle_subplots.append(f"{name}（已闲置{gap}章）")
+        flags = _reminder_flags(e, current_chapter, touch_max)
+        for kind, suffix in flags:
+            if kind == "overdue":
+                overdue.append(f"{name}（{suffix}）")
+            elif kind == "recoverable":
+                recoverable.append(name)
+            elif kind == "idle":
+                idle_subplots.append(f"{name}（{suffix}）")
 
     parts = []
     if overdue:
@@ -256,3 +280,93 @@ def build_foreshadowing_reminder(ledger: dict, current_chapter: int, methodology
     if idle_subplots:
         parts.append("已闲置的副线提醒：" + "；".join(idle_subplots))
     return "；".join(parts)
+
+
+def build_known_by_constraints(
+    ledger: dict,
+    current_chapter: int,
+    methodology: dict | None = None,
+    limit: int = 5,
+) -> str:
+    """
+    写前生成 known_by 信息约束文本（防 OOC：除已知晓者外，其他角色不得提前知情/谈论）。
+
+    从 open/touched 且 known_by 非空的伏笔中，取「最近触碰前 limit 条」∪「提醒命中
+    （逾期/回收窗口/闲置）条目」并集去重，渲染成逐条约束。无命中返回空串。
+
+    渲染格式（不含【信息约束】标题，由调用方包裹）：
+        以下伏笔/秘密仅部分角色知晓，其他角色不得提前知情或谈论：
+        - {name}：已知晓者 [{A, B}]（第{added}章埋设，已{N}章未碰）
+
+    纯规则，无 LLM。ledger / methodology / limit 非预期结构时安全容错。
+    """
+    if not isinstance(ledger, dict):
+        return ""
+    entries = ledger.get("entries")
+    if not isinstance(entries, list):
+        return ""
+    if not isinstance(current_chapter, int):
+        return ""
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = 5
+    if limit < 1:
+        limit = 5
+
+    methodology = methodology if isinstance(methodology, dict) else {}
+    touch = methodology.get("touch_every", [12, 18])
+    if not isinstance(touch, (list, tuple)) or len(touch) != 2:
+        touch = [12, 18]
+    touch_max = int(touch[1])
+
+    # 候选：open/touched、known_by 非空、name 非空
+    qual = []
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        if e.get("status", "open") not in ("open", "touched"):
+            continue
+        name = str(e.get("name", "")).strip()
+        if not name:
+            continue
+        known = _norm_names(e.get("known_by"))
+        if not known:
+            continue
+        last = e.get("last_touch_chapter")
+        if not isinstance(last, int):
+            last = e.get("added_chapter")
+        if not isinstance(last, int):
+            last = 0
+        added = e.get("added_chapter")
+        if not isinstance(added, int):
+            added = 0
+        qual.append({
+            "name": name,
+            "known": known,
+            "last": last,
+            "added": added,
+            "flags": _reminder_flags(e, current_chapter, touch_max),
+        })
+
+    if not qual:
+        return ""
+
+    # 提醒命中池：逾期/回收窗口/闲置的紧要项，即使不在最近前 limit 内也纳入
+    hit = {q["name"]: q for q in qual if q["flags"]}
+    # 最近触碰池：按 (last, added, name) 降序取前 limit 条
+    recent_sorted = sorted(qual, key=lambda q: (q["last"], q["added"], q["name"]), reverse=True)
+    combined = {q["name"]: q for q in recent_sorted[:limit]}
+    combined.update(hit)  # hit 优先覆盖同名项
+
+    # 排序：提醒命中在前，其余按最近触碰倒序（确定性、可解释）
+    ordered = sorted(combined.values(), key=lambda q: (not bool(q["flags"]), -q["last"]))
+
+    lines = []
+    for q in ordered:
+        reason = "，".join(s for _, s in q["flags"])
+        suffix = f"，{reason}" if reason else ""
+        lines.append(
+            f"- {q['name']}：已知晓者 [{', '.join(q['known'])}]（第{q['added']}章埋设{suffix}）"
+        )
+    return "\n".join(lines)

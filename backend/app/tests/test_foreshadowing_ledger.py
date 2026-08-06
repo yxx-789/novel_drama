@@ -5,6 +5,7 @@
 from app.generator.foreshadowing_ledger import (
     SUBPLOT_IDLE_THRESHOLD,
     build_foreshadowing_reminder,
+    build_known_by_constraints,
     merge_foreshadowing_delta,
 )
 
@@ -255,3 +256,98 @@ def test_entry_id_stable_across_calls():
     a = merge_foreshadowing_delta(_empty_ledger(), {"foreshadowing_added": [{"name": "匣"}]}, GENRE, 3)
     b = merge_foreshadowing_delta(_empty_ledger(), {"foreshadowing_added": [{"name": "匣"}]}, GENRE, 3)
     assert a["entries"][0]["id"] == b["entries"][0]["id"]
+
+
+# ---------------- build_known_by_constraints（信息约束，防 OOC） ----------------
+
+def _constraint_entry(name, added, last, known_by, status="open", recovery=None, subplot=False):
+    return {
+        "name": name, "status": status, "added_chapter": added, "last_touch_chapter": last,
+        "planned_recovery_range": recovery if recovery is not None else [20, 40],
+        "subplot": subplot, "known_by": list(known_by) if known_by else [],
+    }
+
+
+def test_known_by_constraints_basic():
+    """基本渲染格式：无提醒命中时只带埋设章。"""
+    ledger = _ledger_with([
+        _constraint_entry("铜匣", added=3, last=3, known_by=["主角", "反派"]),
+    ])
+    text = build_known_by_constraints(ledger, current_chapter=4, methodology=METHOD)
+    assert text.startswith("- 铜匣：已知晓者 [主角, 反派]（第3章埋设）")
+
+
+def test_known_by_constraints_includes_reason_suffix():
+    """逾期 + 回收窗口命中 → 在埋设信息后追加原因短语。"""
+    ledger = _ledger_with([
+        _constraint_entry("玉佩", added=3, last=3, known_by=["主角"], recovery=[20, 40]),
+    ])
+    text = build_known_by_constraints(ledger, current_chapter=25, methodology=METHOD)
+    # 25-3=22 > 15 → 逾期；25 ∈ [20,40] → 回收窗口
+    assert "已22章未碰" in text
+    assert "进入回收窗口" in text
+    assert "（第3章埋设，已22章未碰，进入回收窗口）" in text
+
+
+def test_known_by_constraints_excludes_recovered_abandoned():
+    ledger = _ledger_with([
+        _constraint_entry("A", added=1, last=1, known_by=["主角"], status="recovered"),
+        _constraint_entry("B", added=1, last=1, known_by=["主角"], status="abandoned"),
+    ])
+    assert build_known_by_constraints(ledger, current_chapter=5, methodology=METHOD) == ""
+
+
+def test_known_by_constraints_excludes_empty_known_by():
+    ledger = _ledger_with([
+        _constraint_entry("A", added=1, last=1, known_by=[]),
+        _constraint_entry("B", added=1, last=1, known_by=None),
+    ])
+    assert build_known_by_constraints(ledger, current_chapter=5, methodology=METHOD) == ""
+
+
+def test_known_by_constraints_recent_top5():
+    """超过 limit 条时只取最近触碰的前 5 条（无提醒命中的旧条目不出现）。"""
+    entries = [
+        _constraint_entry(f"伏笔{i}", added=i, last=i, known_by=["主角"], recovery=[100, 200])
+        for i in range(1, 7)
+    ]
+    text = build_known_by_constraints(_ledger_with(entries), current_chapter=10, methodology=METHOD)
+    assert "伏笔1" not in text      # last=1 最旧，超出前 5
+    for i in range(2, 7):
+        assert f"伏笔{i}" in text
+
+
+def test_known_by_constraints_reminder_hit_beyond_limit_included():
+    """进入回收窗口的旧条目不因超出最近前 5 被丢弃——紧要项必须纳入。"""
+    entries = [_constraint_entry("旧伏笔", added=1, last=1, known_by=["主角"], recovery=[20, 40])]
+    for i in range(5):
+        last = 20 + i
+        entries.append(_constraint_entry(f"新伏笔{last}", added=1, last=last, known_by=["主角"], recovery=[100, 200]))
+    text = build_known_by_constraints(_ledger_with(entries), current_chapter=25, methodology=METHOD)
+    assert "旧伏笔" in text
+    assert "进入回收窗口" in text
+
+
+def test_known_by_constraints_dedup_recent_and_hit():
+    """同一条既在最近前 5 又提醒命中 → 只渲染一次。"""
+    entries = [
+        _constraint_entry("铜匣", added=3, last=24, known_by=["主角"], recovery=[20, 40]),
+        _constraint_entry("其它", added=2, last=2, known_by=["反派"], recovery=[100, 200]),
+    ]
+    text = build_known_by_constraints(_ledger_with(entries), current_chapter=25, methodology=METHOD)
+    assert text.count("铜匣") == 1
+
+
+def test_known_by_constraints_tolerant():
+    """ledger / current_chapter / limit 非预期结构 → 空串或回退，不抛异常。"""
+    assert build_known_by_constraints(None, 5, None) == ""
+    assert build_known_by_constraints({"entries": "bad"}, 5, {}) == ""
+    assert build_known_by_constraints({"entries": [42]}, 5, {}) == ""
+    assert build_known_by_constraints(
+        _ledger_with([_constraint_entry("A", added=1, last=1, known_by=["主角"])]),
+        "不是数字", METHOD) == ""
+    # limit 非正常值 → 回退默认 5
+    text = build_known_by_constraints(
+        _ledger_with([_constraint_entry("A", added=1, last=1, known_by=["主角"])]),
+        5, METHOD, limit=0)
+    assert "A" in text

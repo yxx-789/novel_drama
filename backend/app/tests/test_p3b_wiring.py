@@ -211,6 +211,69 @@ class TestBuildL2Context:
         ctx = _run(_build_l2_foreshadowing_context(db, PROJECT_ID, 16, "玄幻"))
         assert "arc 摘要" not in ctx
 
+    # ---- P3-B 闭环：L3 全书脉络 + known_by 信息约束注入 ----
+
+    def test_includes_book_summary_when_reminder_present(self):
+        """伏笔提醒非空时注入 L3 全书脉络。"""
+        db = _FakeDB(assets=[
+            _FakeAsset("arc_summaries", content_json={
+                "arcs": [{"arc_index": 0, "summary": "arc 摘要"}],
+                "book_summary": {"summary": "全书脉络摘要"},
+            }),
+            _FakeAsset("foreshadowing", content_json={
+                "entries": [{
+                    "name": "铜匣", "status": "open", "added_chapter": 1,
+                    "last_touch_chapter": 1, "planned_recovery_range": [20, 40],
+                    "known_by": ["主角"],
+                }],
+                "unmatched": [],
+            }),
+        ])
+        ctx = _run(_build_l2_foreshadowing_context(db, PROJECT_ID, 35, "玄幻"))
+        assert "【全书脉络】" in ctx
+        assert "全书脉络摘要" in ctx
+
+    def test_skips_book_summary_when_no_reminder(self):
+        """无伏笔提醒（无需回溯早期细节）时即使 book_summary 存在也不注入 L3。"""
+        db = _FakeDB(assets=[
+            _FakeAsset("arc_summaries", content_json={
+                "arcs": [{"arc_index": 0, "summary": "arc 摘要"}],
+                "book_summary": {"summary": "全书脉络摘要"},
+            }),
+            _FakeAsset("foreshadowing", content_json={"entries": [], "unmatched": []}),
+        ])
+        ctx = _run(_build_l2_foreshadowing_context(db, PROJECT_ID, 5, "玄幻"))
+        assert "【全书脉络】" not in ctx
+
+    def test_includes_known_by_constraints(self):
+        """每章注入 known_by 信息约束（最近触碰伏笔的已知晓者）。"""
+        db = _FakeDB(assets=[_FakeAsset("foreshadowing", content_json={
+            "entries": [{
+                "name": "玉佩", "status": "open", "added_chapter": 3,
+                "last_touch_chapter": 3, "planned_recovery_range": [20, 40],
+                "known_by": ["主角"],
+            }],
+            "unmatched": [],
+        })])
+        ctx = _run(_build_l2_foreshadowing_context(db, PROJECT_ID, 5, "玄幻"))
+        assert "【信息约束】" in ctx
+        assert "玉佩" in ctx
+        assert "已知晓者" in ctx
+
+    def test_skips_known_by_when_no_known(self):
+        """无候选（known_by 为空 / 已回收）时不注入信息约束。"""
+        db = _FakeDB(assets=[_FakeAsset("foreshadowing", content_json={
+            "entries": [
+                {"name": "A", "status": "open", "added_chapter": 1, "last_touch_chapter": 1,
+                 "planned_recovery_range": [20, 40], "known_by": []},
+                {"name": "B", "status": "recovered", "added_chapter": 1, "last_touch_chapter": 1,
+                 "planned_recovery_range": [20, 40], "known_by": ["主角"]},
+            ],
+            "unmatched": [],
+        })])
+        ctx = _run(_build_l2_foreshadowing_context(db, PROJECT_ID, 5, "玄幻"))
+        assert "【信息约束】" not in ctx
+
 
 # ==================== 台账合并写回 ====================
 

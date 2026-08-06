@@ -3,10 +3,10 @@ import { getAsset } from '../../api/asset'
 
 interface StateChange {
   category: string
-  key: string
+  entity?: string
   field: string
-  old: unknown
-  new: unknown
+  from: unknown
+  to: unknown
 }
 
 interface HistoryEntry {
@@ -29,6 +29,12 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function formatValue(value: unknown): string {
   return typeof value === 'object' ? JSON.stringify(value) : String(value ?? '-')
+}
+
+// 变更历史里的值可能为数组（如 abilities/items），逗号拼接更紧凑
+function formatChangeValue(value: unknown): string {
+  if (Array.isArray(value)) return value.join('、')
+  return formatValue(value)
 }
 
 interface WorldStateTabProps {
@@ -190,24 +196,42 @@ export default function WorldStateTab({ projectId, chapters }: WorldStateTabProp
                   第 {h.chapter} 章
                 </div>
                 <ul className="space-y-1.5">
-                  {h.changes.map((c, cidx) => (
-                    <li key={cidx} className="text-xs text-slate-600 flex items-start gap-2">
-                      <span className="shrink-0 mt-0.5">
-                        {c.category === 'characters' && '👤'}
-                        {c.category === 'events' && '📌'}
-                        {c.category === 'world' && '🌍'}
-                      </span>
-                      <span className="break-all">
-                        <span className="font-medium text-slate-800">{c.key}</span>
-                        {' · '}
-                        <span className="text-slate-500">{c.field}</span>
-                        {'  '}
-                        <span className="text-slate-400 line-through">{String(c.old ?? '-')}</span>
-                        {' → '}
-                        <span className="text-emerald-600 font-medium">{String(c.new ?? '-')}</span>
-                      </span>
-                    </li>
-                  ))}
+                  {h.changes.map((c, cidx) => {
+                    // world 类变更的 entity 恒为 'world'，无信息量，省略
+                    const entityLabel =
+                      c.entity && c.entity !== c.category ? c.entity : null
+                    return (
+                      <li
+                        key={cidx}
+                        className="text-xs text-slate-600 flex items-start gap-2"
+                      >
+                        <span className="shrink-0 mt-0.5">
+                          {c.category === 'characters' && '👤'}
+                          {c.category === 'events' && '📌'}
+                          {c.category === 'world' && '🌍'}
+                        </span>
+                        <span className="break-all">
+                          {entityLabel && (
+                            <>
+                              <span className="font-medium text-slate-800">
+                                {entityLabel}
+                              </span>
+                              {' · '}
+                            </>
+                          )}
+                          <span className="text-slate-500">{c.field}</span>
+                          {'  '}
+                          <span className="text-slate-400 line-through">
+                            {formatChangeValue(c.from)}
+                          </span>
+                          {' → '}
+                          <span className="text-emerald-600 font-medium">
+                            {formatChangeValue(c.to)}
+                          </span>
+                        </span>
+                      </li>
+                    )
+                  })}
                 </ul>
               </div>
             ))}

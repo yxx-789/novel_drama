@@ -2,6 +2,12 @@
 
 ## [未发布]
 
+### 修复：「角色与世界」Tab 变更历史全显示 `- → -`
+
+- **根因**：后端 `merge_world_state` 写入的变更记录字段是 `entity` / `from` / `to`（`{category, entity, field, from, to}`），前端 `WorldStateTab.tsx` 却按 `key` / `old` / `new` 读取——三个字段全部取不到：实体名渲染为空（只剩 `field` 可见，如 `identity`/`status`），`old`/`new` 为 `undefined` 全部兜底成 `-` → 显示成「`· identity - → -`」
+- 修复：`WorldStateTab.tsx` 改为读 `entity` / `from` / `to`；`world` 类变更的冗余 `entity='world'` 省略；新增 `formatChangeValue`（数组值如 abilities/items 用 `、` 拼接）
+- 变更历史现正常显示：`👤 咪咪 · abilities 能感知灵气、可挥出青色剑气 → 能感知灵气、可挥出青色剑气、猫步踏仙途（灵猫十三式根基）`
+
 ### 修复：短剧脚本导出 500 + 批量导出越权防护
 
 - **导出脚本 500 根因**：`drama_episodes.project_id` 列是 uuid 类型，asyncpg 返回 `pgproto.UUID` 对象（有 `__str__`、无 `.replace`）；路由里 `uuid.UUID(episode.project_id)` 对已 UUID 的对象再包装 → `AttributeError: 'asyncpg.pgproto.pgproto.UUID' object has no attribute 'replace'` → 单集/批量导出全部 500

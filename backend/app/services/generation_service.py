@@ -649,8 +649,9 @@ async def extract_chapter_memory(
     """
     从章节正文提取结构化记忆，供后续章节保持连贯。
 
-    返回 dict：summary / hook / characters / relations_changed / foreshadowing_added / connects_to。
-    - 成功：LLM 返回的结构化 JSON。
+    返回 dict：summary / hook / characters / relations_changed / foreshadowing_added（含 known_by）
+    / foreshadowing_touched / foreshadowing_recovered / subplot_advanced / connects_to。
+    - 成功：LLM 返回的结构化 JSON（V3 P3-B 起对缺失的伏笔/副线字段补齐空列表，便于台账合并）。
     - 失败：返回空 dict {}（LLM 未配置 / 调用异常 / 返回空 / JSON 解析失败 / summary 缺失），
       调用方不写入 actual_summary_json，下一章自动回退 outline（符合 spec 回退链设计）。
     - db 参数按接口保留（当前未使用，供后续扩展）。
@@ -687,7 +688,114 @@ async def extract_chapter_memory(
     if not isinstance(memory.get("summary"), str) or not memory["summary"].strip():
         logger.warning("Chapter memory missing summary, falling back to outline")
         return {}
+
+    # V3 P3-B：规范化伏笔/副线字段，容忍缺失（旧输出兼容）。
+    # 台账合并（merge_foreshadowing_delta）对缺失字段按「无变化」跳过，这里置空列表便于统一消费。
+    for key in ("foreshadowing_touched", "foreshadowing_recovered", "subplot_advanced", "foreshadowing_added"):
+        if key not in memory or not isinstance(memory[key], list):
+            memory[key] = []
     return memory
+
+
+async def build_arc_summary(
+    chapters: list,
+    llm_config: dict | None = None,
+    arc_size: int | None = None,
+) -> dict:
+    """
+    在 arc 边界合成 arc 级摘要（V3 P3-B 记忆分层 L2）。
+
+    输入：本 arc 的 Chapter 对象列表（含 actual_summary_json.summary）。
+    返回：
+      - 成功：{"summary": "<arc 摘要文本>", "chapter_range": [start, end]}
+      - 失败：{}（未配置 / 调用异常 / 返回空 / 无可用章节记忆），调用方不写入资产。
+    只在 arc 边界调用，摊薄成本 = 1/N 次/章，不在逐章热路径。
+    """
+    if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key")):
+        return {}
+
+    # 收集本 arc 各章已提取的结构化记忆摘要（summary 非空才可用），保留真实章节号
+    chapter_memories: list[tuple[int, str]] = []
+    for ch in chapters:
+        mem = getattr(ch, "actual_summary_json", None)
+        if not isinstance(mem, dict):
+            continue
+        summary = mem.get("summary")
+        if isinstance(summary, str) and summary.strip():
+            num = getattr(ch, "chapter_num", None)
+            chapter_memories.append((num if isinstance(num, int) else len(chapter_memories) + 1, summary.strip()))
+
+    if not chapter_memories:
+        return {}
+
+    try:
+        from app.generator.prompts import build_arc_summary_prompt
+
+        adapter = _make_adapter(temperature=0.2, llm_config=llm_config)
+        chapters_memory = "\n\n".join(
+            f"第{num}章记忆：{s}" for num, s in chapter_memories
+        )
+        prompt = build_arc_summary_prompt.format(
+            arc_size=arc_size or 15,
+            chapters_memory=chapters_memory,
+        )
+        logger.info("Building arc summary ...")
+        raw = await _invoke_with_retry(adapter, prompt)
+    except Exception as e:
+        logger.warning(f"Arc summary build failed: {e}")
+        return {}
+
+    if not raw or not raw.strip():
+        return {}
+
+    nums = []
+    for ch in chapters:
+        n = getattr(ch, "chapter_num", None)
+        if isinstance(n, int):
+            nums.append(n)
+    chapter_range = [min(nums), max(nums)] if nums else []
+    return {"summary": raw.strip(), "chapter_range": chapter_range}
+
+
+async def synthesize_book_summary(
+    arcs: list,
+    llm_config: dict | None = None,
+) -> str:
+    """
+    由已冻结的各 arc 摘要合成全书摘要（V3 P3-B 记忆分层 L3）。
+
+    输入：arcs（list[dict]，每项含 summary）。
+    返回：全书摘要文本；失败（未配置 / 调用异常 / 返回空 / 无可用 arc 摘要）返回 ""。
+    在 arc 边界每完成一个 arc 后增量刷新一次。
+    """
+    if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key")):
+        return ""
+
+    arc_summaries = []
+    for arc in arcs:
+        if not isinstance(arc, dict):
+            continue
+        s = arc.get("summary")
+        if isinstance(s, str) and s.strip():
+            arc_summaries.append(s.strip())
+
+    if not arc_summaries:
+        return ""
+
+    try:
+        from app.generator.prompts import synthesize_book_summary_prompt
+
+        adapter = _make_adapter(temperature=0.2, llm_config=llm_config)
+        prompt = synthesize_book_summary_prompt.format(
+            arcs_summary="\n\n".join(arc_summaries),
+        )
+        logger.info("Synthesizing book summary ...")
+        raw = await _invoke_with_retry(adapter, prompt)
+    except Exception as e:
+        logger.warning(f"Book summary synthesis failed: {e}")
+        return ""
+
+    return raw.strip() if raw else ""
 
 
 def merge_world_state(old_state: dict, delta: dict) -> dict:

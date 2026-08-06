@@ -16,9 +16,10 @@ from app.services.generation_service import (
     generate_architecture,
     generate_chapter_draft,
     generate_directory,
+    load_active_character_cards,
     merge_world_state,
     parse_chapter_blueprint,
-    update_character_state,
+    update_character_cards,
 )
 from app.generator.world_state_templates import get_template
 from app.services.inspiration_service import build_inspiration_guidance
@@ -302,7 +303,8 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
             if not directory_text:
                 raise RuntimeError("Directory not found. Please generate directory first.")
 
-            character_state_text = await _get_asset_text(db, str(task.project_id), "characters") or ""
+            # P2-B: 写前只加载出场角色卡（结构化卡项目只注入出场角色，旧文本项目原样返回）
+            character_state_text = await load_active_character_cards(db, str(task.project_id), chapter_num) or ""
 
             # 读取 world_state
             world_state_raw = await _get_asset_text(db, str(task.project_id), "world_state")
@@ -384,17 +386,13 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
 
             await update_task_status(db, task_id, "running", progress=70)
 
-            # 更新角色状态
-            if character_state_text:
-                try:
-                    new_state = await update_character_state(
-                        chapter_text=draft_text,
-                        old_state=character_state_text,
-                        llm_config=llm_config,
-                    )
-                    await _save_asset(db, str(task.project_id), "characters", new_state)
-                except Exception as e:
-                    logger.warning(f"Character state update failed for chapter {chapter_num}: {e}")
+            # P2-B: 更新角色卡（结构化档案双通道写回；失败不中断生成，保留旧状态）
+            try:
+                await update_character_cards(
+                    db, str(task.project_id), chapter_num, draft_text, llm_config=llm_config,
+                )
+            except Exception as e:
+                logger.warning(f"Character cards update failed for chapter {chapter_num}: {e}")
 
             # 提取并更新 world_state（非阻塞）
             try:
@@ -521,8 +519,6 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
             if not directory_text:
                 raise RuntimeError("Directory not found. Please generate directory first.")
 
-            character_state_text = await _get_asset_text(db, str(task.project_id), "characters") or ""
-
             # 读取 world_state
             world_state_raw = await _get_asset_text(db, str(task.project_id), "world_state")
             world_state: dict = {}
@@ -588,6 +584,9 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                         except Exception as e:
                             logger.warning(f"Batch build state summary failed for chapter {chapter_num}: {e}")
 
+                    # P2-B: 写前只加载出场角色卡（按本章，不再循环外全量加载一次）
+                    character_state_text = await load_active_character_cards(db, str(task.project_id), chapter_num) or ""
+
                     draft_text = await generate_chapter_draft(
                         project,
                         chapter_num=chapter_num,
@@ -619,18 +618,14 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                         except Exception as e:
                             logger.warning(f"Batch chapter consistency check failed for chapter {chapter_num}: {e}")
 
-                    # 更新角色状态
-                    if character_state_text:
-                        try:
-                            new_state = await update_character_state(
-                                chapter_text=draft_text,
-                                old_state=character_state_text,
-                                llm_config=llm_config,
-                            )
-                            character_state_text = new_state
-                            await _save_asset(db, str(task.project_id), "characters", new_state)
-                        except Exception as e:
-                            logger.warning(f"Character state update failed for chapter {chapter_num}: {e}")
+                    # P2-B: 更新角色卡（结构化档案双通道写回；失败不中断生成，保留旧状态）
+                    # 不再内存累积全量状态——下一章从资产重新加载"出场角色卡"
+                    try:
+                        await update_character_cards(
+                            db, str(task.project_id), chapter_num, draft_text, llm_config=llm_config,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Character cards update failed for chapter {chapter_num}: {e}")
 
                     # 提取并更新 world_state（非阻塞）
                     try:

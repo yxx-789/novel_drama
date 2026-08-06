@@ -231,15 +231,15 @@ def _patch_batch_pipeline(fake_db, fake_generate_draft, fake_extract_memory):
         _get_asset_text=AsyncMock(side_effect=lambda db, pid, t: {
             "architecture": "架构文本",
             "directory": "第1章 - 开局\n第2章 - 发展",
-            "characters": "角色状态文本",
             "world_state": None,
         }.get(t)),
+        load_active_character_cards=AsyncMock(return_value="角色状态文本"),
         generate_chapter_draft=fake_generate_draft,
         extract_chapter_memory=fake_extract_memory,
         extract_world_state_delta=AsyncMock(return_value={"no_changes": True}),
         build_state_summary=AsyncMock(return_value=""),
         check_chapter_consistency=AsyncMock(return_value="CHECK: CONSISTENT"),
-        update_character_state=AsyncMock(return_value="新角色状态"),
+        update_character_cards=AsyncMock(return_value={"characters": {}}),
         _save_asset=AsyncMock(),
     )
 
@@ -322,3 +322,38 @@ class TestBatchPipelineWiring:
         assert ch2.actual_summary_json is None
         # 下一章概要用 outline（而非原文片段）
         assert calls[1]["previous_chapter_summary"] == "第一章大纲"
+
+    def test_batch_uses_active_character_cards_per_chapter(self):
+        """P2-B: 每章写前按本章号加载出场角色卡，写后用 update_character_cards 更新（非旧 update_character_state）。"""
+        ch1 = _mk_chapter(1, outline="第一章大纲")
+        ch2 = _mk_chapter(2, outline="第二章大纲")
+        chapters = [ch1, ch2]
+        fake_db = _FakeDB(chapters)
+        draft_calls = []
+        load_calls = []
+        update_calls = []
+
+        async def fake_generate_draft(project, **kwargs):
+            draft_calls.append(kwargs)
+            return f"第{kwargs['chapter_num']}章草稿"
+
+        async def fake_extract_memory(db, chapter, llm_config):
+            return {}
+
+        with _patch_batch_pipeline(fake_db, fake_generate_draft, fake_extract_memory):
+            # patch.multiple 在 Python 3.14 的 __enter__ 返回单个 mock 而非 dict，
+            # 这里直接对 task_service 模块里已被替换的 mock 设置 side_effect 记录调用。
+            import app.services.task_service as ts
+            ts.load_active_character_cards.side_effect = \
+                lambda db, pid, chapter_num: (load_calls.append(chapter_num) or "角色状态文本")
+            ts.update_character_cards.side_effect = \
+                lambda db, pid, chapter_num, text, **kw: (update_calls.append(chapter_num) or {})
+            _run(run_batch_chapters_task(uuid.uuid4()))
+
+        # 每章写前按本章号加载出场角色卡
+        assert load_calls == [1, 2]
+        # 草稿 prompt 收到的角色状态来自 load_active_character_cards
+        assert draft_calls[0]["character_state_text"] == "角色状态文本"
+        assert draft_calls[1]["character_state_text"] == "角色状态文本"
+        # 每章写后用 update_character_cards 更新角色卡
+        assert update_calls == [1, 2]

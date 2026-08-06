@@ -26,7 +26,7 @@ from app.generator.prompts import (
     update_character_state_prompt,
     world_building_prompt,
 )
-from app.models.project import Project
+from app.models.project import Project, ProjectAsset
 
 logger = logging.getLogger(__name__)
 
@@ -290,6 +290,173 @@ async def update_character_state(
     if not new_state:
         raise RuntimeError("update_character_state generation failed")
     return new_state
+
+
+# =================== P2-B 角色卡系统 ===================
+async def _load_character_asset(db: AsyncSession, project_id) -> ProjectAsset | None:
+    """读取 characters 资产记录（含 content_json / content_text）。"""
+    from sqlalchemy import select
+    result = await db.execute(
+        select(ProjectAsset).where(
+            ProjectAsset.project_id == str(project_id),
+            ProjectAsset.asset_type == "characters",
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+def _render_character_cards(characters_json, active_names=None) -> str:
+    """把角色卡 JSON 渲染为可读文本（供 prompt 注入 / content_text 兼容存储）。
+
+    active_names 给定则只渲染出场角色；None 渲染全部。非 dict / 缺字段时优雅降级。
+    """
+    chars = characters_json.get("characters") if isinstance(characters_json, dict) else None
+    if not isinstance(chars, dict):
+        return ""
+    lines = []
+    for name, card in chars.items():
+        if active_names and name not in active_names:
+            continue
+        if not isinstance(card, dict):
+            lines.append(f"### {name}")
+            lines.append("")
+            continue
+        lines.append(f"### {name}")
+        profile = card.get("profile")
+        if isinstance(profile, str) and profile.strip():
+            lines.append(f"- 人设：{profile.strip()}")
+        state = card.get("current_state")
+        if isinstance(state, dict) and state:
+            lines.append("- 当前状态：" + "；".join(f"{k}：{v}" for k, v in state.items() if str(v).strip()))
+        relations = card.get("relations")
+        if isinstance(relations, dict) and relations:
+            lines.append("- 关系：" + "；".join(f"{k}：{v}" for k, v in relations.items() if str(v).strip()))
+        known = card.get("known")
+        if isinstance(known, list) and known:
+            lines.append("- 认知：" + "；".join(str(x) for x in known if str(x).strip()))
+        trajectory = card.get("trajectory")
+        if isinstance(trajectory, list) and trajectory:
+            lines.append("- 轨迹：" + "；".join(str(x) for x in trajectory if str(x).strip()))
+        last_appearance = card.get("last_appearance")
+        if last_appearance is not None:
+            lines.append(f"- 最近出场：第{last_appearance}章")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+async def _active_character_names(db: AsyncSession, project_id, prev_chapter_num: int, cards: dict) -> list[str]:
+    """从上一章 actual_summary_json.characters 提取出场角色名，与现有角色卡取交集。"""
+    from app.models.project import Chapter
+    from sqlalchemy import select
+    result = await db.execute(
+        select(Chapter).where(
+            Chapter.project_id == str(project_id),
+            Chapter.chapter_num == prev_chapter_num,
+        )
+    )
+    prev = result.scalar_one_or_none()
+    if not prev:
+        return []
+    memory = getattr(prev, "actual_summary_json", None)
+    names = memory.get("characters") if isinstance(memory, dict) else None
+    if not isinstance(names, list):
+        return []
+    chars = cards.get("characters") if isinstance(cards, dict) else {}
+    return [n for n in names if isinstance(n, str) and n in chars]
+
+
+async def load_active_character_cards(
+    db: AsyncSession,
+    project_id,
+    chapter_num: int,
+) -> str:
+    """写前只加载「出场角色卡」，防止角色状态随章节数增长导致上下文稀释。
+
+    优先级：
+    1. characters 资产有 content_json（结构化角色卡）→ 只渲染出场角色
+       （出场名单取上一章 actual_summary_json.characters，与现有卡片取交集）。
+    2. 无法确定出场角色（第 1 章 / 上一章无 characters 记录）→ 渲染全部卡片兜底，防上下文缺失。
+    3. 旧项目（无 content_json，characters 为文本）→ 原样返回 content_text（与改造前行为一致，不崩溃）。
+    """
+    asset = await _load_character_asset(db, project_id)
+    if asset is None:
+        return ""
+    if not asset.content_json:
+        return asset.content_text or ""
+    cards = asset.content_json
+    active_names: list[str] = []
+    if chapter_num and chapter_num > 1:
+        active_names = await _active_character_names(db, project_id, chapter_num - 1, cards)
+    if not active_names:
+        return _render_character_cards(cards)
+    return _render_character_cards(cards, active_names)
+
+
+async def update_character_cards(
+    db: AsyncSession,
+    project_id,
+    chapter_num: int,
+    chapter_text: str,
+    llm_config: dict | None = None,
+) -> dict | None:
+    """根据本章正文更新角色卡档案，写回 characters 资产（双通道）。
+
+    - content_json = 结构化角色卡；content_text = 可读渲染（供 drama / 导出 / 前端兼容，避免格式变更破坏既有功能）。
+    - 输入兼容：旧版文本角色状态（content_text）或结构化角色卡 JSON（content_json），首次更新时自动迁移。
+    - 失败 / 未配置 LLM / 空正文：返回 None（保留旧状态，不抛异常，不中断生成）。
+    """
+    if not chapter_text:
+        return None
+    if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key")):
+        return None
+
+    asset = await _load_character_asset(db, project_id)
+    old_state = asset.content_json if (asset and asset.content_json) else (asset.content_text if asset else "")
+
+    try:
+        from app.generator.prompts import character_card_update_prompt
+        adapter = _make_adapter(temperature=0.2, llm_config=llm_config)
+        old_repr = json.dumps(old_state, ensure_ascii=False, indent=2) if isinstance(old_state, dict) else (old_state or "")
+        prompt = character_card_update_prompt.format(
+            chapter_text=chapter_text[:4000],  # 截断防止超限
+            old_state=old_repr,
+        )
+        logger.info(f"Updating character cards for chapter {chapter_num} ...")
+        raw = await _invoke_with_retry(adapter, prompt)
+    except Exception as e:
+        logger.warning(f"Character card update failed for chapter {chapter_num}: {e}")
+        return None
+
+    if not raw:
+        return None
+    cards = _parse_llm_json(raw)
+    if not cards or not isinstance(cards.get("characters"), dict):
+        logger.warning(f"Failed to parse character cards JSON for chapter {chapter_num}")
+        return None
+
+    # 规范化 last_appearance：缺失即视为"本章出场"→ 用本章号。
+    # （prompt 要求未出场卡片"原样保留"，正常会带原 last_appearance；缺失多为新增/更新卡片漏填。）
+    new_chars = cards["characters"]
+    for name, new_card in new_chars.items():
+        if isinstance(new_card, dict) and new_card.get("last_appearance") is None:
+            new_card["last_appearance"] = chapter_num
+
+    text = _render_character_cards(cards)
+    if asset:
+        asset.content_json = cards
+        asset.content_text = text
+        asset.version += 1
+    else:
+        asset = ProjectAsset(
+            project_id=str(project_id),
+            asset_type="characters",
+            content_text=text,
+            content_json=cards,
+        )
+        db.add(asset)
+    await db.commit()
+    logger.info(f"Character cards saved for chapter {chapter_num} ({len(cards['characters'])} cards)")
+    return cards
 
 
 def _chapter_excerpt(draft: str | None) -> str:

@@ -25,5 +25,8 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS: int = 8192
     LLM_TIMEOUT: int = 600
 
+    # V3 P3-B：arc 章节数（每 N 章冻结一次 arc 摘要，摊薄 1/N；arc 边界触发）
+    ARC_SIZE: int = 15
+
 
 settings = Settings()

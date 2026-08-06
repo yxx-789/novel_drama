@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import uuid
@@ -35,12 +36,16 @@ from app.generator.world_state_templates import get_template
 from app.services.inspiration_service import build_inspiration_guidance
 from app.services.llm_config_service import resolve_llm_config
 from app.services.project_service import get_project_by_id
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# V3 P3-B：arc 章节数（可配置化，默认 15）。arc 边界（chapter_num % ARC_SIZE == 0）
-# 触发一次 arc 摘要合成（L2），写前追加已冻结 arc 摘要与伏笔提醒，写后台账合并。
-ARC_SIZE = 15
+# V3 P3-B：arc 章节数（可配置化，默认 15，环境变量 ARC_SIZE 覆盖）。arc 边界
+# （chapter_num % ARC_SIZE == 0）触发一次 arc 摘要合成（L2），写前追加已冻结 arc 摘要、
+# 全书脉络（L3）与伏笔提醒/信息约束，写后台账合并。
+# 模块加载时读 settings 一次并保留模块级名字：既有 @patch("task_service.ARC_SIZE", N)
+# 测试可原样替换模块属性，无需逐个改 patch 目标。
+ARC_SIZE = settings.ARC_SIZE
 
 
 async def create_task(db: AsyncSession, project_id: uuid.UUID, task_type: str, params: dict | None = None) -> Task:
@@ -373,13 +378,20 @@ async def _build_l2_foreshadowing_context(
 async def _merge_foreshadowing_ledger(
     db: AsyncSession, project_id: str, chapter_num: int, memory: dict, genre: str
 ) -> None:
-    """写后台账合并：把本章记忆的伏笔/副线字段并入 foreshadowing 资产。失败不中断。"""
+    """写后台账合并：把本章记忆的伏笔/副线字段并入 foreshadowing 资产。失败不中断。
+
+    无变化（merge 前后深比较相等）时跳过写回，避免空跳 version；但资产缺失时
+    仍初始化写入空台账（旧项目兼容：首章也建立台账结构）。
+    """
     try:
         ledger = await _get_asset_json(db, project_id, "foreshadowing")
-        if not isinstance(ledger, dict):
+        existed = isinstance(ledger, dict)
+        if not existed:
             ledger = {"entries": [], "unmatched": []}
+        before = copy.deepcopy(ledger)  # merge_foreshadowing_delta 原地修改，必须快照比较
         merged = merge_foreshadowing_delta(ledger, memory, genre, chapter_num)
-        await _save_asset_json(db, project_id, "foreshadowing", merged)
+        if not existed or merged != before:
+            await _save_asset_json(db, project_id, "foreshadowing", merged)
     except Exception as e:
         logger.warning(f"Foreshadowing ledger merge failed for chapter {chapter_num}: {e}")
 
@@ -655,6 +667,17 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                     db, str(task.project_id), chapter_num, memory, project.genre or ""
                 )
             await _finalize_arc_summary(db, str(task.project_id), chapter_num, llm_config)
+
+            # V3 P3-B 闭环：单章路径写到全书最后一章时合成一次全书摘要（L3，摊薄 1/N），
+            # 与批量路径（循环结束合成）行为对称；num_chapters 未设（0/None）时跳过。
+            total_chapters = getattr(project, "num_chapters", 0) or 0
+            if total_chapters and chapter_num == total_chapters:
+                try:
+                    await _synthesize_book_summary_asset(
+                        db, str(task.project_id), llm_config
+                    )
+                except Exception as e:
+                    logger.warning(f"Book summary synthesis failed for task {task_id}: {e}")
 
             await update_task_status(
                 db,

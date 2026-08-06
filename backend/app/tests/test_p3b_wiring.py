@@ -311,6 +311,35 @@ class TestMergeLedger:
         _run(_merge_foreshadowing_ledger(db, PROJECT_ID, 3, {"foreshadowing_added": []}, "玄幻"))
         assert "foreshadowing" not in db.assets
 
+    def test_no_change_does_not_bump_version(self):
+        """merge 前后无变化（空 memory）→ 跳过写回，version / commit 均不变。"""
+        asset = _FakeAsset("foreshadowing", content_json={"entries": [], "unmatched": []}, version=3)
+        db = _FakeDB(assets=[asset])
+        _run(_merge_foreshadowing_ledger(db, PROJECT_ID, 3, {}, "玄幻"))
+        assert asset.version == 3
+        assert db.commit_count == 0
+
+    def test_no_change_with_empty_lists_skips(self):
+        """memory 字段全是空列表 → 无变化 → 不写回。"""
+        asset = _FakeAsset("foreshadowing", content_json={"entries": [], "unmatched": []}, version=3)
+        db = _FakeDB(assets=[asset])
+        memory = {
+            "foreshadowing_added": [], "foreshadowing_touched": [],
+            "foreshadowing_recovered": [], "subplot_advanced": [],
+        }
+        _run(_merge_foreshadowing_ledger(db, PROJECT_ID, 3, memory, "玄幻"))
+        assert asset.version == 3
+        assert db.commit_count == 0
+
+    def test_change_still_writes_and_bumps_version(self):
+        """已有资产且 merge 产生变化 → 写回 + version bump。"""
+        asset = _FakeAsset("foreshadowing", content_json={"entries": [], "unmatched": []}, version=3)
+        db = _FakeDB(assets=[asset])
+        memory = {"foreshadowing_added": [{"name": "铜匣", "note": "信物"}]}
+        _run(_merge_foreshadowing_ledger(db, PROJECT_ID, 3, memory, "玄幻"))
+        assert asset.version == 4
+        assert asset.content_json["entries"][0]["name"] == "铜匣"
+
 
 # ==================== arc 边界冻结 ====================
 

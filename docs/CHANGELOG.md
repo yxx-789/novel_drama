@@ -2,6 +2,32 @@
 
 ## [未发布]
 
+### V3 P3-A：去危机化 + 题材化伏笔/节奏方法论
+
+- **题材方法论层（`genre_methodology.py`）**
+  - 12 个核心题材 + 种田兼容键各配一套写作参数：`conflict_driver`（冲突驱动类型）/ `foreshadowing_intervals`（伏笔回收间距：短线/中线/长线，单位章）/ `touch_every`（长线伏笔每 N 章「碰一下」）/ `recovery_audit`（大伏笔回收前是否要求线索审计）/ `hook_preference`（章末钩子四断法偏好）/ `payoff_note`（爽点频率与节奏）/ `opening_arc`（开篇弧线）；缺权威方法的题材用保守默认并注释出处等级（A/B/C），不允许留空
+  - `get_genre_methodology(genre)` 未知题材回退 `DEFAULT_METHODOLOGY`（不报错）；`_render_genre_methodology` 渲染成伏笔间距/冲突驱动/爽点节奏/钩子偏好 prompt 片段；`_render_hook_preference` 渲染「发现、误判」式钩子偏好文本
+  - 四断法钩子（决定/发现/误判/代价）落为 `HOOK_FOUR_BREAKS` 枚举
+
+- **structure 条件化去危机（`structure_guidance.py` + `prompts.py`）**
+  - 危机驱动结构（升级打怪/三幕经典/倒叙钩子/单元剧快节奏/长线连载）沿用现状文本为默认基线；平静结构（日常流/群像交织）替换为平静/正反馈分片：不强制异常征兆/打破平衡/悬念曲线，保留人物魅力 + 生活切片 + 正反馈
+  - `build_structure_guidance(structure)` 返回 6 分片（seed/character/world/first_chapter/chapter/blueprint）；未知/缺省回退危机基线，旧项目行为不变
+  - `prompts.py` 7 处硬危机规则改条件占位符：核心种子/角色动力学/世界观/首章/续章/章节蓝图注入 `{structure_*_guidance}`；首章与续章新增【题材写作方法】`{genre_methodology}`；续章章末钩子升级为四断法枚举 + `{hook_preference}`；架构一致性校验「危机体现」中性化为「主题与创作意图在架构中得到体现」
+
+- **生成接线（`generation_service.py` / `task_service.py`）**
+  - `_structure_for_project(project)` 从 `writing_config.structure` 读取结构；`generate_architecture` / `generate_directory` / `generate_chapter_draft` 组装时计算 `build_structure_guidance` 分片并注入各 prompt，`generate_chapter_draft` 另注入题材方法论片段 + 钩子偏好
+  - 旧项目（无 `writing_config`）→ `_structure_for_project` 返回 None → 危机基线，生成行为与改造前一致
+
+- **记忆中性化（阶段 2 轻量项，不新增 LLM 调用）**
+  - `extract_world_state_delta` / `build_state_summary` 新增 `structure` 参数：平静结构时追加「保留关键常态状态（主角身份/稳定关系/重要场所）、保留当前舒适/日常状态与情绪基调」的补充约束
+  - `slim_state` 裁剪：平静结构放宽为每类 20 条 / 5 章变更窗口，让稳定关系/常态状态不被最近变更挤掉；危机结构与缺省仍为 10 条 / 3 章，行为不变
+  - `task_service` 的 `run_chapter_task` / `run_batch_chapters_task` 透传 structure 到记忆函数
+
+- **单元测试**
+  - `test_genre_methodology.py`（8 用例）：四断法完整性 / 未知题材回退 / 默认表完整 / 12 题材全覆盖 / 条目字段完整且正交（hook 偏好是四断法子集）/ 渲染含关键参数
+  - `test_structure_guidance.py`（10 用例）：危机/平静结构分类 / None 与未知回退危机基线 / 平静分片不正向使用危机语义（否定语境不算）/ 7 处占位符存在 / 一致性 prompt 中性 / 占位符全部可格式化
+  - `test_p3a_wiring.py`（14 用例）：`_structure_for_project` 读取与回退 / 架构·目录·章节 prompt 注入平静或危机分片与题材方法论 / 悬疑钩子偏好「发现、误判」/ 旧项目危机基线 / 记忆提取与摘要平静后缀 / slim_state 平静 20 条 vs 缺省 10 条
+
 ### V3 P2-B：角色卡系统
 
 - **characters 资产重构为结构化角色卡（双通道存储）**

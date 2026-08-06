@@ -28,6 +28,18 @@ Phase 1: 最小业务闭环 —— 项目 API（已完成）
 - [x] 计划与文档：`docs/superpowers/plans/2026-08-06-v3-p2b-character-cards.md` 全勾选、CHANGELOG「V3 P2-B」、本次 progress 同步
 - [ ] 端到端（可选，待真实环境）：真实生成 2 章检查 characters 资产为 JSON 角色卡
 
+### V3 P3-A：去危机化 + 题材化伏笔/节奏方法论（2026-08-06）
+
+- [x] `genre_methodology.py`：12 核心题材 + 种田兼容键各配一套参数（conflict_driver / foreshadowing_intervals / touch_every / recovery_audit / hook_preference / payoff_note / opening_arc），出处等级 A/B/C 注释；`get_genre_methodology` 未知题材回退 `DEFAULT_METHODOLOGY`；`_render_genre_methodology` / `_render_hook_preference` 渲染 prompt 片段；四断法 `HOOK_FOUR_BREAKS`
+- [x] `structure_guidance.py`：危机结构（升级打怪/三幕经典/倒叙钩子/单元剧快节奏/长线连载）沿用现状基线，平静结构（日常流/群像交织）替换为平静/正反馈分片；`build_structure_guidance` 返回 6 分片，未知/缺省回退危机基线
+- [x] `prompts.py` 7 处硬危机规则改条件占位符；首章/续章新增【题材写作方法】`{genre_methodology}`；续章钩子升级四断法 + `{hook_preference}`；架构一致性校验中性化
+- [x] 生成接线：`_structure_for_project` 从 writing_config 读 structure；`generate_architecture` / `generate_directory` / `generate_chapter_draft` 注入结构分片 + 题材方法论 + 钩子偏好；旧项目回退危机基线
+- [x] 记忆中性化：`extract_world_state_delta` / `build_state_summary` 新增 structure 参数，平静结构追加「保留常态状态/舒适日常基调」约束；slim_state 平静放宽为每类 20 条 / 5 章窗口（缺省 10 条 / 3 章不变）；task_service 透传 structure
+- [x] **单章 LLM 调用数不变**：P3-A 前基线 af7b165 与当前均为 14 处 `_invoke_with_retry`，P3-A 未新增调用（新增的 1 处相对 b0390b8 是 P2-B 的 update_character_cards）
+- [x] 测试：`test_genre_methodology.py`（8）+ `test_structure_guidance.py`（10）+ `test_p3a_wiring.py`（14）；全量 230 用例通过
+- [x] 文档：CHANGELOG「V3 P3-A」、plan 全勾选、roadmap 阶段 2 状态 →「已实现」
+- [ ] 真实 LLM 出稿抽查（待配 API key）：日常流项目正文无"异常征兆/打破平衡"硬痕迹、悬疑项目保留悬念与伏笔回收、章末钩子落四断法之一
+
 ### Phase 0 文档
 
 - [x] 项目定位与整合方向确定（AI_NovelGenerator + novel_to_drama → Web 工作台）

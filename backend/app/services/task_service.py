@@ -1,6 +1,7 @@
 import json
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +11,7 @@ from app.models.project import Project, ProjectAsset, Task
 from app.services.drama_service import generate_drama_outline, generate_drama_script
 from app.services.generation_service import (
     _structure_for_project,
+    build_arc_summary,
     build_state_summary,
     check_chapter_consistency,
     extract_chapter_memory,
@@ -20,14 +22,21 @@ from app.services.generation_service import (
     load_active_character_cards,
     merge_world_state,
     parse_chapter_blueprint,
+    synthesize_book_summary,
     update_character_cards,
 )
+from app.generator.foreshadowing_ledger import build_foreshadowing_reminder, merge_foreshadowing_delta
+from app.generator.genre_methodology import get_genre_methodology
 from app.generator.world_state_templates import get_template
 from app.services.inspiration_service import build_inspiration_guidance
 from app.services.llm_config_service import resolve_llm_config
 from app.services.project_service import get_project_by_id
 
 logger = logging.getLogger(__name__)
+
+# V3 P3-B：arc 章节数（可配置化，默认 15）。arc 边界（chapter_num % ARC_SIZE == 0）
+# 触发一次 arc 摘要合成（L2），写前追加已冻结 arc 摘要与伏笔提醒，写后台账合并。
+ARC_SIZE = 15
 
 
 async def create_task(db: AsyncSession, project_id: uuid.UUID, task_type: str, params: dict | None = None) -> Task:
@@ -275,6 +284,158 @@ def _previous_chapter_summary(prev_chapter) -> str:
     return prev_chapter.outline or ""
 
 
+# =================== V3 P3-B 记忆分层接线辅助 ===================
+
+async def _get_asset_json(db: AsyncSession, project_id: str, asset_type: str) -> dict | None:
+    """读取 JSON 资产（content_json）；无资产 / 非 dict → None。"""
+    result = await db.execute(
+        select(ProjectAsset).where(
+            ProjectAsset.project_id == project_id,
+            ProjectAsset.asset_type == asset_type,
+        )
+    )
+    asset = result.scalar_one_or_none()
+    if not asset or not isinstance(asset.content_json, dict):
+        return None
+    return asset.content_json
+
+
+async def _save_asset_json(db: AsyncSession, project_id: str, asset_type: str, content: dict) -> None:
+    """写入 JSON 资产（content_json）；不存在则新建。"""
+    result = await db.execute(
+        select(ProjectAsset).where(
+            ProjectAsset.project_id == project_id,
+            ProjectAsset.asset_type == asset_type,
+        )
+    )
+    asset = result.scalar_one_or_none()
+    if asset:
+        asset.content_json = content
+        asset.version += 1
+    else:
+        asset = ProjectAsset(
+            project_id=project_id,
+            asset_type=asset_type,
+            content_json=content,
+        )
+        db.add(asset)
+    await db.commit()
+
+
+async def _build_l2_foreshadowing_context(
+    db: AsyncSession, project_id: str, chapter_num: int, genre: str
+) -> str:
+    """写前组装 L2 上下文：已冻结 arc 摘要（最近完成 arc）+ 伏笔/副线提醒。
+
+    纯资产读取 + 纯规则，零新增 LLM 调用；无内容返回空串。
+    """
+    parts = []
+
+    # 已冻结 arc 摘要（最近完成 arc；arc 在边界冻结，之后的章开始注入）
+    arc_data = await _get_asset_json(db, project_id, "arc_summaries")
+    arcs = arc_data.get("arcs") if isinstance(arc_data, dict) else None
+    if isinstance(arcs, list) and arcs:
+        last_arc = arcs[-1]
+        if isinstance(last_arc, dict):
+            summary = last_arc.get("summary")
+            if isinstance(summary, str) and summary.strip():
+                parts.append(f"【已冻结 arc 摘要】{summary.strip()}")
+
+    # 伏笔/副线提醒（methodology 与 merge_foreshadowing_delta 内取同源题材参数）
+    ledger = await _get_asset_json(db, project_id, "foreshadowing")
+    if isinstance(ledger, dict):
+        methodology = get_genre_methodology(genre)
+        reminder = build_foreshadowing_reminder(
+            ledger, current_chapter=chapter_num, methodology=methodology
+        )
+        if reminder:
+            parts.append(f"【伏笔/副线提醒】{reminder}")
+
+    return "\n\n".join(parts)
+
+
+async def _merge_foreshadowing_ledger(
+    db: AsyncSession, project_id: str, chapter_num: int, memory: dict, genre: str
+) -> None:
+    """写后台账合并：把本章记忆的伏笔/副线字段并入 foreshadowing 资产。失败不中断。"""
+    try:
+        ledger = await _get_asset_json(db, project_id, "foreshadowing")
+        if not isinstance(ledger, dict):
+            ledger = {"entries": [], "unmatched": []}
+        merged = merge_foreshadowing_delta(ledger, memory, genre, chapter_num)
+        await _save_asset_json(db, project_id, "foreshadowing", merged)
+    except Exception as e:
+        logger.warning(f"Foreshadowing ledger merge failed for chapter {chapter_num}: {e}")
+
+
+async def _finalize_arc_summary(
+    db: AsyncSession, project_id: str, chapter_num: int, llm_config: dict
+) -> None:
+    """arc 边界（chapter_num % ARC_SIZE == 0）冻结 arc 摘要（L2），冻结不覆盖。失败不中断。"""
+    if chapter_num % ARC_SIZE != 0:
+        return
+    try:
+        from app.models.project import Chapter
+        arc_start = chapter_num - ARC_SIZE + 1
+        arc_index = chapter_num // ARC_SIZE - 1
+        # 冻结不覆盖：同 arc_index 已存在则跳过（先查资产，避免重复触发 arc 摘要 LLM 调用）
+        arc_data = await _get_asset_json(db, project_id, "arc_summaries")
+        if not isinstance(arc_data, dict):
+            arc_data = {"arcs": [], "book_summary": {}}
+        arcs = arc_data.get("arcs")
+        if not isinstance(arcs, list):
+            arcs = []
+            arc_data["arcs"] = arcs
+        if any(isinstance(a, dict) and a.get("arc_index") == arc_index for a in arcs):
+            return
+        result = await db.execute(
+            select(Chapter).where(
+                Chapter.project_id == project_id,
+                Chapter.chapter_num >= arc_start,
+                Chapter.chapter_num <= chapter_num,
+            ).order_by(Chapter.chapter_num)
+        )
+        chapters = list(result.scalars().all())
+        if not chapters:
+            return
+        arc = await build_arc_summary(chapters, llm_config, arc_size=ARC_SIZE)
+        if not arc:
+            return
+        arcs.append({
+            "arc_index": arc_index,
+            "chapter_range": arc.get("chapter_range") or [arc_start, chapter_num],
+            "title": f"第{arc_start}-{chapter_num}章",
+            "summary": arc.get("summary", ""),
+            "frozen_at": datetime.now(timezone.utc).isoformat(),
+        })
+        await _save_asset_json(db, project_id, "arc_summaries", arc_data)
+        logger.info(f"Arc {arc_index} summary frozen for chapters {arc_start}-{chapter_num}")
+    except Exception as e:
+        logger.warning(f"Arc summary finalize failed for chapter {chapter_num}: {e}")
+
+
+async def _synthesize_book_summary_asset(
+    db: AsyncSession, project_id: str, llm_config: dict
+) -> None:
+    """全书写完（batch 循环结束）时合成全书摘要（L3）。无已冻结 arc 时跳过。失败不中断。"""
+    try:
+        arc_data = await _get_asset_json(db, project_id, "arc_summaries")
+        arcs = arc_data.get("arcs") if isinstance(arc_data, dict) else None
+        if not isinstance(arcs, list) or not arcs:
+            return
+        summary = await synthesize_book_summary(arcs, llm_config)
+        if not summary:
+            return
+        arc_data["book_summary"] = {
+            "summary": summary,
+            "synthesized_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await _save_asset_json(db, project_id, "arc_summaries", arc_data)
+        logger.info("Book summary synthesized")
+    except Exception as e:
+        logger.warning(f"Book summary synthesis failed: {e}")
+
+
 async def run_chapter_task(task_id: uuid.UUID) -> None:
     """后台执行单章正文生成任务"""
     async with AsyncSessionLocal() as db:
@@ -355,6 +516,19 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                     )
                 except Exception as e:
                     logger.warning(f"Build state summary failed for chapter {chapter_num}: {e}")
+
+            # V3 P3-B：写前追加 L2 上下文（已冻结 arc 摘要 + 伏笔/副线提醒），零新增 LLM 调用
+            try:
+                l2_context = await _build_l2_foreshadowing_context(
+                    db, str(task.project_id), chapter_num, project.genre or ""
+                )
+                if l2_context:
+                    world_state_summary = (
+                        f"{world_state_summary}\n\n{l2_context}".strip()
+                        if world_state_summary else l2_context
+                    )
+            except Exception as e:
+                logger.warning(f"L2 context build failed for chapter {chapter_num}: {e}")
 
             await update_task_status(db, task_id, "running", progress=50)
             draft_text = await generate_chapter_draft(
@@ -448,6 +622,7 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                 db.add(chapter)
 
             # 结构化章节记忆提取（非阻塞，失败不中断生成）
+            memory = {}
             try:
                 memory = await extract_chapter_memory(db, chapter, llm_config)
                 if memory and memory.get("summary"):
@@ -457,6 +632,13 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                 logger.warning(f"Chapter memory extraction failed for chapter {chapter_num}: {e}")
 
             await db.commit()
+
+            # V3 P3-B：写后台账合并（纯规则）+ arc 边界冻结（失败不中断）
+            if memory and memory.get("summary"):
+                await _merge_foreshadowing_ledger(
+                    db, str(task.project_id), chapter_num, memory, project.genre or ""
+                )
+            await _finalize_arc_summary(db, str(task.project_id), chapter_num, llm_config)
 
             await update_task_status(
                 db,
@@ -590,6 +772,19 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                         except Exception as e:
                             logger.warning(f"Batch build state summary failed for chapter {chapter_num}: {e}")
 
+                    # V3 P3-B：写前追加 L2 上下文（已冻结 arc 摘要 + 伏笔/副线提醒），零新增 LLM 调用
+                    try:
+                        l2_context = await _build_l2_foreshadowing_context(
+                            db, str(task.project_id), chapter_num, project.genre or ""
+                        )
+                        if l2_context:
+                            world_state_summary = (
+                                f"{world_state_summary}\n\n{l2_context}".strip()
+                                if world_state_summary else l2_context
+                            )
+                    except Exception as e:
+                        logger.warning(f"Batch L2 context build failed for chapter {chapter_num}: {e}")
+
                     # P2-B: 写前只加载出场角色卡（按本章，不再循环外全量加载一次）
                     character_state_text = await load_active_character_cards(db, str(task.project_id), chapter_num) or ""
 
@@ -654,6 +849,7 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                         logger.warning(f"Batch world state update failed for chapter {chapter_num}: {e}")
 
                     # 结构化章节记忆提取（非阻塞，失败不中断生成）
+                    memory = {}
                     try:
                         memory = await extract_chapter_memory(db, chapter, llm_config)
                         if memory and memory.get("summary"):
@@ -663,6 +859,14 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                         logger.warning(f"Batch chapter memory extraction failed for chapter {chapter_num}: {e}")
 
                     await db.commit()
+
+                    # V3 P3-B：写后台账合并（纯规则）+ arc 边界冻结（失败不中断）
+                    if memory and memory.get("summary"):
+                        await _merge_foreshadowing_ledger(
+                            db, str(task.project_id), chapter_num, memory, project.genre or ""
+                        )
+                    await _finalize_arc_summary(db, str(task.project_id), chapter_num, llm_config)
+
                     generated_count += 1
                 except Exception as e:
                     logger.exception(f"Batch chapter {chapter_num} generation failed: {e}")
@@ -680,6 +884,12 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                         "failed_chapters": failed_chapters,
                     }
                 )
+
+            # V3 P3-B：全书写完（循环结束）合成全书摘要（L3）；失败不中断
+            try:
+                await _synthesize_book_summary_asset(db, str(task.project_id), llm_config)
+            except Exception as e:
+                logger.warning(f"Book summary synthesis failed for task {task_id}: {e}")
 
             if failed_chapters:
                 await update_task_status(

@@ -241,6 +241,11 @@ def _patch_batch_pipeline(fake_db, fake_generate_draft, fake_extract_memory):
         check_chapter_consistency=AsyncMock(return_value="CHECK: CONSISTENT"),
         update_character_cards=AsyncMock(return_value={"characters": {}}),
         _save_asset=AsyncMock(),
+        # V3 P3-B 接线（纯规则/边界触发，batch 测试 mock 掉以保持原语义）
+        _build_l2_foreshadowing_context=AsyncMock(return_value=""),
+        _merge_foreshadowing_ledger=AsyncMock(),
+        _finalize_arc_summary=AsyncMock(),
+        _synthesize_book_summary_asset=AsyncMock(),
     )
 
 

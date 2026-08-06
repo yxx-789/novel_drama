@@ -10,8 +10,12 @@ import re
 
 from app.core.config import settings
 from app.generator.llm_adapter import create_llm_adapter
+from app.generator.llm_utils import repair_stray_quotes
 
 logger = logging.getLogger(__name__)
+
+# 大纲 JSON 解析失败时的最大重试次数（LLM 偶发退化/畸形输出，重试通常即成功）
+_OUTLINE_PARSE_MAX_RETRIES = 3
 
 
 # =============== Episode Outline Prompts ===================
@@ -70,7 +74,7 @@ _EPISODE_OUTLINE_SYSTEM_PROMPT = """你是一位专业的竖屏微短剧编剧�
 
 ## 输出格式
 
-你必须严格按照以下 JSON 格式输出，不要添加任何额外文字：
+你必须严格按照以下 JSON 格式输出，不要添加任何额外文字。**输出必须是严格合法的 JSON 对象，可由 json.loads 直接解析；JSON 字符串内部若需引用一律使用中文全角引号「」或“”，严禁在字符串内部使用未转义的英文双引号。**
 
 ```json
 {
@@ -354,11 +358,23 @@ def _parse_llm_json(content: str) -> dict | None:
     if m:
         candidates.append(m.group().strip())
 
-    for candidate in candidates:
+    # 方法4：修复字符串内部未转义的双引号（LLM 常在台词/对话字段里内嵌
+    # 英文双引号导致解析失败），作为兜底 candidate
+    base_count = len(candidates)
+    repaired = repair_stray_quotes(cleaned)
+    if repaired != cleaned:
+        candidates.append(repaired)
+        m = re.search(r'\{[\s\S]*\}', repaired)
+        if m:
+            candidates.append(m.group().strip())
+
+    for idx, candidate in enumerate(candidates):
         # 尝试直接解析
         try:
             result = json.loads(candidate)
             if isinstance(result, dict):
+                if idx >= base_count:
+                    logger.info("JSON parsed successfully after repairing stray quotes")
                 return result
         except Exception:
             pass
@@ -375,7 +391,10 @@ def _parse_llm_json(content: str) -> dict | None:
         try:
             result = json.loads(fixed)
             if isinstance(result, dict):
-                logger.info("JSON parsed successfully after fixing truncation")
+                if idx >= base_count:
+                    logger.info("JSON parsed successfully after repairing stray quotes")
+                else:
+                    logger.info("JSON parsed successfully after fixing truncation")
                 return result
         except Exception:
             pass
@@ -415,7 +434,8 @@ async def _invoke_llm(prompt: str, max_retries: int = 3, max_tokens: int | None 
         try:
             result = await adapter.invoke(prompt)
             cleaned = result.replace("```", "").strip()
-            if cleaned:
+            # 退化输出：只有 "json"（模型开了代码围栏但没写正文）视为空，触发重试
+            if cleaned and cleaned.lower() != "json":
                 return cleaned
             logger.warning(f"Empty LLM response on attempt {attempt + 1}")
         except Exception as e:
@@ -450,9 +470,29 @@ async def generate_drama_outline(
 
     full_prompt = f"{_EPISODE_OUTLINE_SYSTEM_PROMPT}\n\n{user_prompt}"
     logger.info(f"Generating drama outline for episode {episode_num} ...")
-    raw = await _invoke_llm(full_prompt, llm_config=llm_config)
 
-    outline = _parse_llm_json(raw)
+    # 解析失败重试：LLM 偶发输出退化（只有 "json" 围栏）或含未转义引号的畸形 JSON。
+    # 上次输出不可解析时附上修复提示重新生成，最多 _OUTLINE_PARSE_MAX_RETRIES 次。
+    repair_hint = (
+        "\n\n## ⚠️ 上次输出的 JSON 无法解析\n"
+        "你上一次输出的 JSON 解析失败。请重新输出，并严格遵守：\n"
+        "- 输出必须是【严格合法的 JSON 对象】，可由 json.loads 直接解析；\n"
+        "- JSON 字符串内部的引号一律使用中文全角引号「」或“”，严禁在字符串内部使用未转义的英文双引号；\n"
+        "- 除 JSON 对象本身外，不要输出任何解释、前缀或多余文字。"
+    )
+
+    outline = None
+    for attempt in range(1, _OUTLINE_PARSE_MAX_RETRIES + 1):
+        raw = await _invoke_llm(full_prompt, llm_config=llm_config)
+        outline = _parse_llm_json(raw)
+        if outline:
+            break
+        logger.warning(
+            f"Failed to parse drama outline for episode {episode_num} "
+            f"(attempt {attempt}/{_OUTLINE_PARSE_MAX_RETRIES}), retrying with repair hint ..."
+        )
+        full_prompt = full_prompt + repair_hint
+
     if not outline:
         raise RuntimeError(f"Failed to parse drama outline JSON for episode {episode_num}")
 

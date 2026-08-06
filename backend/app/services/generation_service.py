@@ -10,6 +10,7 @@ import uuid
 
 from app.core.config import settings
 from app.generator.llm_adapter import create_llm_adapter
+from app.generator.llm_utils import repair_stray_quotes
 from sqlalchemy.ext.asyncio import AsyncSession
 import re
 
@@ -588,6 +589,13 @@ def _parse_llm_json(content: str) -> dict | None:
     m = re.search(r'\{[\s\S]*\}', cleaned)
     if m:
         candidates.append(m.group().strip())
+    # 兜底：修复字符串内部未转义的双引号（LLM 在台词/描述字段内嵌英文引号）
+    repaired = repair_stray_quotes(cleaned)
+    if repaired != cleaned:
+        candidates.append(repaired)
+        m = re.search(r'\{[\s\S]*\}', repaired)
+        if m:
+            candidates.append(m.group().strip())
     for candidate in candidates:
         try:
             result = json.loads(candidate)

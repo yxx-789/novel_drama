@@ -2,6 +2,18 @@
 
 ## [未发布]
 
+### 修复：短剧大纲 JSON 解析鲁棒性 + 世界设定渲染
+
+- **短剧大纲生成失败（"Failed to parse drama outline JSON for episode 1"）根因修复**——只生成 1 章后跳转短剧生成时，DeepSeek 偶发输出退化（只有 `json` 代码围栏、正文为空）或含未转义英文双引号的畸形 JSON（如台词字段内嵌 `"（OS 咪咪心声）"今天…`），导致 `json.loads` 失败、任务硬错误：
+  - 新增 `app/generator/llm_utils.py::repair_stray_quotes`（纯函数）：定点修复「两侧都是中文字符」的 ASCII 双引号 → 全角引号，不影响 JSON 结构引号；`drama_service._parse_llm_json` 与 `generation_service._parse_llm_json`（memory/world_state 路径，减少静默降级）追加该修复为兜底 candidate
+  - `_invoke_llm`：把退化输出（strip 后仅 `json`）视为空响应，触发内部重试
+  - `generate_drama_outline`：新增解析失败重试循环（`_OUTLINE_PARSE_MAX_RETRIES=3`），重试时在 prompt 尾部追加修复提示（严格合法 JSON + 字符串内禁英文双引号），全部失败才抛错
+  - `_EPISODE_OUTLINE_SYSTEM_PROMPT` 输出格式段新增「必须是严格合法 JSON、字符串内部用全角引号」声明（从源头降低畸形输出概率）
+  - 新增 `test_drama_robustness.py`（13 用例）：引号修复、两类解析器、大纲重试成功/失败、`_invoke_llm` 退化重试
+
+- **「角色与世界」Tab 世界设定纵向逐字显示修复**——`world_state` 的 `world` 段是扁平结构（`{current_date: "杏花村午后（第1章）", location: "…"}`，见 `merge_world_state`），前端 `WorldStateTab.tsx` 的 `Section` 却按两层嵌套假设遍历 `Object.entries(字符串)`，把字符串逐字拆成 `["0","杏"]…`：
+  - `Section` 兼容两种 shape：值为对象走嵌套渲染，值为原始类型（字符串/数字）直接展示完整值；新增 `isPlainObject` / `formatValue` 辅助
+
 ### V3 P3-B：记忆分层 + 伏笔台账
 
 - **记忆分层（L1/L2/L3，无新增表，存 `ProjectAsset.content_json`）**

@@ -18,8 +18,17 @@ interface WorldState {
   genre_template?: string
   characters?: Record<string, Record<string, unknown>>
   events?: Record<string, Record<string, unknown>>
-  world?: Record<string, Record<string, unknown>>
+  // world 为扁平结构（字段 -> 值），如 { current_date: "杏花村午后（第1章）" }
+  world?: Record<string, unknown>
   history?: HistoryEntry[]
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function formatValue(value: unknown): string {
+  return typeof value === 'object' ? JSON.stringify(value) : String(value ?? '-')
 }
 
 interface WorldStateTabProps {
@@ -39,11 +48,10 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 }
 
 function FieldRow({ label, value }: { label: string; value: unknown }) {
-  const display = typeof value === 'object' ? JSON.stringify(value) : String(value ?? '-')
   return (
     <div className="flex justify-between items-start gap-3 text-sm">
       <span className="text-slate-500 shrink-0">{label}</span>
-      <span className="text-slate-800 text-right break-all">{display}</span>
+      <span className="text-slate-800 text-right break-all">{formatValue(value)}</span>
     </div>
   )
 }
@@ -55,7 +63,7 @@ function Section({
 }: {
   title: string
   icon: string
-  items: Record<string, Record<string, unknown>> | undefined
+  items: Record<string, unknown> | undefined
 }) {
   const entries = items ? Object.entries(items) : []
   if (entries.length === 0) return null
@@ -67,13 +75,21 @@ function Section({
         {title}
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {entries.map(([key, fields]) => (
-          <Card key={key} title={key}>
-            {Object.entries(fields).map(([f, v]) => (
-              <FieldRow key={f} label={f} value={v} />
-            ))}
-          </Card>
-        ))}
+        {entries.map(([key, value]) =>
+          isPlainObject(value) ? (
+            // 嵌套结构（characters/events）：实体名 -> 字段 -> 值
+            <Card key={key} title={key}>
+              {Object.entries(value).map(([f, v]) => (
+                <FieldRow key={f} label={f} value={v} />
+              ))}
+            </Card>
+          ) : (
+            // 扁平结构（world）：字段 -> 值，直接展示原始值，避免被逐字遍历
+            <Card key={key} title={key}>
+              <div className="text-sm text-slate-800 break-all">{formatValue(value)}</div>
+            </Card>
+          ),
+        )}
       </div>
     </div>
   )

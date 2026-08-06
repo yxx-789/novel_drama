@@ -17,6 +17,17 @@ Phase 1: 最小业务闭环 —— 项目 API（已完成）
 
 ## 已完成事项
 
+### V3 P2-B：角色卡系统（2026-08-06）
+
+- [x] `character_card_update_prompt`：角色卡 JSON 更新 prompt（兼容旧版文本角色状态输入）
+- [x] `generation_service.py` 新增：`_load_character_asset` / `_render_character_cards` / `_active_character_names` / `load_active_character_cards`（写前只加载出场角色卡）/ `update_character_cards`（写后更新，双通道写回）
+- [x] `characters` 资产双通道存储：`content_json`=结构化角色卡（profile/current_state/relations/known/last_appearance/trajectory），`content_text`=可读渲染，drama/导出/前端兼容不受影响
+- [x] task_service 接入：单章 + 批量章节生成写前 `load_active_character_cards`、写后 `update_character_cards`；批量移除循环外全量加载与内存累积
+- [x] 旧文本 characters 兼容：无 content_json 原样返回；首次更新自动迁移
+- [x] 测试：`test_character_cards.py`（17 用例）+ `test_chapter_memory.py` 逐章验证；全量 198 用例通过
+- [x] 计划与文档：`docs/superpowers/plans/2026-08-06-v3-p2b-character-cards.md` 全勾选、CHANGELOG「V3 P2-B」、本次 progress 同步
+- [ ] 端到端（可选，待真实环境）：真实生成 2 章检查 characters 资产为 JSON 角色卡
+
 ### Phase 0 文档
 
 - [x] 项目定位与整合方向确定（AI_NovelGenerator + novel_to_drama → Web 工作台）

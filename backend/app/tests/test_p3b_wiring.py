@@ -16,6 +16,7 @@ from app.services.task_service import (
     _save_asset_json,
     _synthesize_book_summary_asset,
     run_batch_chapters_task,
+    run_chapter_task,
     ARC_SIZE,
 )
 
@@ -660,3 +661,169 @@ class TestBatchWiring:
         assert len(llm_calls) == 13
         # 边界章单章调用数 = 6 常规 + 1 arc = 7 ≤ 7
         assert len([c for c in llm_calls[6:]]) == 7
+
+
+# ==================== 单章路径 run_chapter_task 接线 ====================
+
+def _patch_single_base(db, chapter_num=1, num_chapters=0):
+    """单章路径基础 mock：数据库会话 + 任务/项目查询 + 非 LLM 辅助函数。
+
+    保留 P3-B 真实接线（_build_l2_foreshadowing_context / _merge_foreshadowing_ledger /
+    _finalize_arc_summary / _synthesize_book_summary_asset），6 类 LLM 函数由
+    _counting_llm_patch 注入，以便精确统计每次 LLM 调用。
+    """
+    fake_task = SimpleNamespace(project_id=PROJECT_ID, params={"chapter_num": chapter_num})
+    fake_project = SimpleNamespace(
+        owner_id="owner-1", genre="", num_chapters=num_chapters,
+        word_number=2000, topic="", writing_config=None,
+    )
+    return patch.multiple(
+        "app.services.task_service",
+        AsyncSessionLocal=_FakeSessionFactory(db),
+        get_task_by_id=AsyncMock(return_value=fake_task),
+        update_task_status=AsyncMock(),
+        get_project_by_id=AsyncMock(return_value=fake_project),
+        resolve_llm_config=AsyncMock(return_value={"api_key": "test"}),
+        _get_asset_text=AsyncMock(side_effect=lambda db, pid, t: {
+            "architecture": "架构文本",
+            "directory": "第1章 - 开局\n第2章 - 发展",
+            "world_state": '{"characters": {"张三": {}}}',
+        }.get(t)),
+        load_active_character_cards=AsyncMock(return_value="角色状态文本"),
+        _save_asset=AsyncMock(),
+    )
+
+
+def _counting_llm_patch(llm_calls):
+    """单章 6 类常规 LLM 调用的 counting 函数（与批量路径同名约定，逐次记录）。"""
+    async def counting_draft(project, **kwargs):
+        llm_calls.append("draft")
+        return f"草稿{kwargs['chapter_num']}"
+
+    async def counting_state_summary(**kwargs):
+        llm_calls.append("state_summary")
+        return ""
+
+    async def counting_delta(**kwargs):
+        llm_calls.append("delta")
+        return {"no_changes": True}
+
+    async def counting_memory(db, chapter, llm_config):
+        llm_calls.append("memory")
+        return {"summary": "s", "foreshadowing_added": [], "foreshadowing_touched": [],
+                "foreshadowing_recovered": [], "subplot_advanced": []}
+
+    async def counting_check(**kwargs):
+        llm_calls.append("consistency")
+        return "CHECK: CONSISTENT"
+
+    async def counting_cards(db, project_id, chapter_num, draft_text, **kwargs):
+        llm_calls.append("cards")
+        return {"characters": {}}
+
+    return patch.multiple(
+        "app.services.task_service",
+        generate_chapter_draft=counting_draft,
+        build_state_summary=counting_state_summary,
+        extract_world_state_delta=counting_delta,
+        extract_chapter_memory=counting_memory,
+        check_chapter_consistency=counting_check,
+        update_character_cards=counting_cards,
+    )
+
+
+class TestSingleChapterWiring:
+    """单章路径 run_chapter_task：P3-B 接线 + LLM 调用数约束（此前零覆盖）。"""
+
+    def test_single_non_boundary_llm_le_6(self):
+        """单章非边界：6 类常规 LLM 调用，不触发 arc 摘要 / 全书摘要。"""
+        llm_calls = []
+        db = _FakeDB(chapters=[_mk_chapter(1, "大纲1"), _mk_chapter(2, "大纲2")])
+        with _patch_single_base(db, chapter_num=1, num_chapters=0), \
+             _counting_llm_patch(llm_calls), \
+             patch("app.services.task_service.ARC_SIZE", 100), \
+             patch("app.services.task_service.build_arc_summary", AsyncMock()) as mock_arc, \
+             patch("app.services.task_service._synthesize_book_summary_asset", AsyncMock()) as mock_book:
+            _run(run_chapter_task(uuid.uuid4()))
+        assert len(llm_calls) == 6
+        assert llm_calls.count("arc_summary") == 0
+        mock_arc.assert_not_called()
+        mock_book.assert_not_called()
+
+    def test_single_arc_boundary_llm_le_7(self):
+        """单章 arc 边界（ARC_SIZE=2 → 第2章）：6 常规 + 1 arc = 7，摊薄 1/N。"""
+        llm_calls = []
+        db = _FakeDB(chapters=[_mk_chapter(1, "大纲1"), _mk_chapter(2, "大纲2")])
+
+        async def counting_arc(chapters, llm_config, **kwargs):
+            llm_calls.append("arc_summary")
+            return {"summary": "arc 摘要", "chapter_range": [1, 2]}
+
+        with _patch_single_base(db, chapter_num=2, num_chapters=0), \
+             _counting_llm_patch(llm_calls), \
+             patch("app.services.task_service.ARC_SIZE", 2), \
+             patch("app.services.task_service.build_arc_summary", counting_arc), \
+             patch("app.services.task_service._synthesize_book_summary_asset", AsyncMock()):
+            _run(run_chapter_task(uuid.uuid4()))
+        assert llm_calls.count("arc_summary") == 1
+        assert len(llm_calls) == 7
+        # arc 摘要已冻结写入资产
+        arcs = db.assets["arc_summaries"].content_json["arcs"]
+        assert arcs[0]["arc_index"] == 0
+        assert arcs[0]["chapter_range"] == [1, 2]
+
+    def test_single_last_chapter_synthesizes_book_summary(self):
+        """单章写到全书最后一章（chapter_num == num_chapters）→ 合成一次全书摘要（L3，摊薄 1/N）。"""
+        llm_calls = []
+        db = _FakeDB(chapters=[_mk_chapter(1, "大纲1"), _mk_chapter(2, "大纲2")])
+        with _patch_single_base(db, chapter_num=2, num_chapters=2), \
+             _counting_llm_patch(llm_calls), \
+             patch("app.services.task_service.ARC_SIZE", 100), \
+             patch("app.services.task_service._synthesize_book_summary_asset", AsyncMock()) as mock_book:
+            _run(run_chapter_task(uuid.uuid4()))
+        mock_book.assert_called_once()          # 摊薄 1/N：最后一章仅一次
+        assert len(llm_calls) == 6              # book 合成独立于每章预算，未占用 6 次
+
+    def test_single_last_chapter_num_chapters_zero_skips(self):
+        """num_chapters 未设（0/None）→ 不合成全书摘要（旧项目不写 L3）。"""
+        llm_calls = []
+        db = _FakeDB(chapters=[_mk_chapter(1, "大纲1"), _mk_chapter(2, "大纲2")])
+        with _patch_single_base(db, chapter_num=2, num_chapters=0), \
+             _counting_llm_patch(llm_calls), \
+             patch("app.services.task_service.ARC_SIZE", 100), \
+             patch("app.services.task_service._synthesize_book_summary_asset", AsyncMock()) as mock_book:
+            _run(run_chapter_task(uuid.uuid4()))
+        mock_book.assert_not_called()
+
+    def test_single_old_project_no_new_llm(self):
+        """旧项目（无 arc/foreshadowing 资产）：行为不变，LLM 调用数不变，台账初始化为空结构。"""
+        llm_calls = []
+        db = _FakeDB(chapters=[_mk_chapter(1, "大纲1")])
+        with _patch_single_base(db, chapter_num=1, num_chapters=0), \
+             _counting_llm_patch(llm_calls), \
+             patch("app.services.task_service.ARC_SIZE", 100), \
+             patch("app.services.task_service._synthesize_book_summary_asset", AsyncMock()):
+            _run(run_chapter_task(uuid.uuid4()))
+        assert len(llm_calls) == 6
+        assert "arc_summaries" not in db.assets
+        # 台账首章初始化为空结构（旧项目兼容：不破坏生成，也不新增 LLM 调用）
+        assert db.assets["foreshadowing"].content_json == {"entries": [], "unmatched": []}
+
+    def test_single_last_boundary_both_extra(self):
+        """最后一章恰为 arc 边界：arc 摘要 1 次 + 全书摘要 1 次（各自摊薄 1/N，重叠不重复）。"""
+        llm_calls = []
+        db = _FakeDB(chapters=[_mk_chapter(1, "大纲1"), _mk_chapter(2, "大纲2")])
+
+        async def counting_arc(chapters, llm_config, **kwargs):
+            llm_calls.append("arc_summary")
+            return {"summary": "arc 摘要", "chapter_range": [1, 2]}
+
+        with _patch_single_base(db, chapter_num=2, num_chapters=2), \
+             _counting_llm_patch(llm_calls), \
+             patch("app.services.task_service.ARC_SIZE", 2), \
+             patch("app.services.task_service.build_arc_summary", counting_arc), \
+             patch("app.services.task_service._synthesize_book_summary_asset", AsyncMock()) as mock_book:
+            _run(run_chapter_task(uuid.uuid4()))
+        assert llm_calls.count("arc_summary") == 1
+        assert len(llm_calls) == 7  # 6 常规 + 1 arc；book 单独断言
+        mock_book.assert_called_once()

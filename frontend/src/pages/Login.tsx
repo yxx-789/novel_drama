@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { login, register, getCurrentUser } from '../api/auth'
 import { useAuthStore } from '../store/auth'
 import { queryClient } from '../queryClient'
+import SiteCredit from '../components/SiteCredit'
 
 function Login() {
   const navigate = useNavigate()
@@ -42,7 +43,7 @@ function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
+    <div className="min-h-screen flex flex-col items-center justify-center p-6">
       <div className="glass-panel w-full max-w-md p-10 md:p-12 space-y-8">
         <div className="text-center space-y-3">
           <h1 className="text-2xl font-serif font-medium text-slate-800 tracking-wide">
@@ -125,6 +126,8 @@ function Login() {
           </button>
         </div>
       </div>
+
+      <SiteCredit />
     </div>
   )
 }

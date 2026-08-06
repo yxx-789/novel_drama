@@ -55,7 +55,8 @@ async def export_drama_episode(
         raise HTTPException(status_code=404, detail="剧集不存在")
 
     # 权限校验：通过 project_id 验证
-    project = await get_project_by_id(db, uuid.UUID(episode.project_id), current_user.id)
+    # 注意：episode.project_id 是 asyncpg 的 pgproto.UUID（非 str），需先转 str 再包 uuid.UUID
+    project = await get_project_by_id(db, uuid.UUID(str(episode.project_id)), current_user.id)
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在或无权限访问")
 
@@ -95,7 +96,12 @@ async def export_drama_episodes_batch(
     if not episodes:
         raise HTTPException(status_code=404, detail="未找到选中的剧集")
 
-    project = await get_project_by_id(db, uuid.UUID(episodes[0].project_id), current_user.id)
+    # 越权防护：所有选中剧集必须属于同一项目，且该项目归当前用户所有
+    # （避免通过任意 episode_id 导出他人项目的脚本）
+    project_ids = {str(ep.project_id) for ep in episodes}
+    if len(project_ids) != 1:
+        raise HTTPException(status_code=400, detail="选中的剧集不属于同一项目")
+    project = await get_project_by_id(db, uuid.UUID(project_ids.pop()), current_user.id)
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在或无权限访问")
 
@@ -137,7 +143,7 @@ async def _get_episode_with_auth(
     episode = result.scalar_one_or_none()
     if not episode:
         raise HTTPException(status_code=404, detail="剧集不存在")
-    project = await get_project_by_id(db, uuid.UUID(episode.project_id), user_id)
+    project = await get_project_by_id(db, uuid.UUID(str(episode.project_id)), user_id)
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在或无权限访问")
     return episode

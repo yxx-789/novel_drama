@@ -2,6 +2,13 @@
 
 ## [未发布]
 
+### 修复：短剧脚本导出 500 + 批量导出越权防护
+
+- **导出脚本 500 根因**：`drama_episodes.project_id` 列是 uuid 类型，asyncpg 返回 `pgproto.UUID` 对象（有 `__str__`、无 `.replace`）；路由里 `uuid.UUID(episode.project_id)` 对已 UUID 的对象再包装 → `AttributeError: 'asyncpg.pgproto.pgproto.UUID' object has no attribute 'replace'` → 单集/批量导出全部 500
+  - `routers/drama.py` 三处（单集导出、批量导出、`_get_episode_with_auth`）改为 `uuid.UUID(str(...))`
+- **批量导出越权防护**：原实现只校验 `episodes[0]` 的项目归属，任意用户可传他人项目的 episode_id 导出他人脚本；现要求所有选中剧集属于**同一项目**且归当前用户所有，跨项目返回 400
+- 新增 `test_drama_export.py`（6 用例）：pgproto.UUID 单集导出 200、无脚本 400、不存在 404、批量同项目 200、跨项目 400、无脚本 400；全量 330 passed
+
 ### 修复：短剧大纲 JSON 解析鲁棒性 + 世界设定渲染
 
 - **短剧大纲生成失败（"Failed to parse drama outline JSON for episode 1"）根因修复**——只生成 1 章后跳转短剧生成时，DeepSeek 偶发输出退化（只有 `json` 代码围栏、正文为空）或含未转义英文双引号的畸形 JSON（如台词字段内嵌 `"（OS 咪咪心声）"今天…`），导致 `json.loads` 失败、任务硬错误：

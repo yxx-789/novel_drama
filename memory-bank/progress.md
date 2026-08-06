@@ -52,6 +52,19 @@ Phase 1: 最小业务闭环 —— 项目 API（已完成）
 - [x] 文档：CHANGELOG「V3 P3-B」、plan 全勾选、roadmap 阶段 3 状态 →「已实现」、decisions D018
 - [ ] 端到端（可选，待真实环境 + API key）：30 章 + 项目抽查 arc 摘要仍保留前 10 章关键事件；伏笔台账逐章更新、逾期/待回收/副线闲置在写前上下文出现
 
+### V3 P3-B 闭环：L3 纵览 + known_by 信息约束 + 收尾修复（2026-08-06）
+
+- [x] **L3 全书脉络闭环使用（防幻觉）**：`_build_l2_foreshadowing_context` 新增【全书脉络】段，仅当伏笔/副线提醒命中时注入 `book_summary.summary`；提醒为空不注入（避免常驻 token）
+- [x] **单章路径合成 L3**：`run_chapter_task` 写到全书最后一章（`chapter_num == num_chapters`）时合成一次全书摘要，与批量路径行为对称；`num_chapters` 未设跳过；摊薄 1/N 不占每章预算
+- [x] **known_by 信息约束闭环（防 OOC）**：`foreshadowing_ledger.py` 新增纯规则 `build_known_by_constraints`（候选过滤 open/touched + known_by 非空；最近触碰前 5 条 ∪ 提醒命中项去重；渲染「已知晓者」，含埋设章/未碰/回收窗口后缀）；每章独立注入【信息约束】
+- [x] **`_reminder_flags` 抽取重构**：`build_foreshadowing_reminder` 内部判定抽取为私有函数复用，reminder 输出逐字节不变（既有 8 条 reminder 断言全绿）
+- [x] **ARC_SIZE 配置化**：`config.py` 新增 `ARC_SIZE: int = 15`（env）；task_service 模块加载时读取、保留模块级名，既有 `@patch("task_service.ARC_SIZE", N)` 测试零改动
+- [x] **台账无变化写回修复**：`_merge_foreshadowing_ledger` 加 deepcopy 快照 + `existed` 守卫，merge 前后无变化跳过写回（不空 bump version）；资产缺失仍初始化空台账（旧项目兼容）
+- [x] **单章路径测试覆盖（此前零覆盖）**：`test_p3b_wiring.py` 新增 `_patch_single_base` + `_counting_llm_patch` + `TestSingleChapterWiring` 6 用例（非边界 LLM=6 / arc 边界=7 / 末章合成 L3 / num_chapters=0 跳过 / 旧项目兼容 / 边界+末章重叠），复核 agent 突变测试确认非表面断言
+- [x] **测试**：`test_foreshadowing_ledger.py`（+8 known_by）+ `test_p3b_wiring.py`（+13）；全量 311 用例通过；单章 LLM 调用数不变（非边界 6 / 边界 7）
+- [x] **文档**：CHANGELOG「V3 P3-B 闭环」、DATA_MODEL（book_summary 单章合成 + known_by 消费）、ARCHITECTURE / DEPLOYMENT（ARC_SIZE env）、decisions 新增
+- [ ] 端到端（可选，待真实环境 + API key）：章节写前上下文出现【全书脉络】/【信息约束】；末章触发全书摘要
+
 ### Phase 0 文档
 
 - [x] 项目定位与整合方向确定（AI_NovelGenerator + novel_to_drama → Web 工作台）

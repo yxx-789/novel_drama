@@ -20,9 +20,29 @@
   - `routers/assets.py`：`ASSET_TYPES` 白名单新增 `arc_summaries` / `foreshadowing`（可查看/导出）
 
 - **单元测试**
-  - `test_foreshadowing_ledger.py`（19 用例）：新增/触碰/回收/逾期状态迁移、恢复窗口端点、known_by 去重、命名漂移进 unmatched、已回收不重开
+  - `test_foreshadowing_ledger.py`（27 用例）：新增/触碰/回收/逾期状态迁移、恢复窗口端点、known_by 去重、命名漂移进 unmatched、已回收不重开（含 P3-B 闭环新增 known_by 约束 8 用例）
   - `test_arc_summary.py`（15 用例）：`build_arc_summary` 成功/未配置/异常/空返回/无可记忆不调 LLM、`synthesize_book_summary` 合成与回退、`extract_chapter_memory` 新字段解析与缺失补空
-  - `test_p3b_wiring.py`（26 用例）：资产读写、L2 上下文组装、台账合并写回、arc 边界冻结不覆盖、全书摘要合成、批量接线（旧项目兼容 + LLM 调用数断言：非边界 6 / 边界 7）
+  - `test_p3b_wiring.py`（39 用例）：资产读写、L2 上下文组装、台账合并写回、arc 边界冻结不覆盖、全书摘要合成、批量 + 单章接线（旧项目兼容 + LLM 调用数断言：非边界 6 / 边界 7）
+
+### V3 P3-B 闭环：L3 纵览 + known_by 信息约束 + 收尾修复
+
+针对「P3-B 三处写而不读」的闭环改造（L3 纵览 / known_by / 单章路径），防止章节生成幻觉与角色 OOC，**全部零新增每章 LLM 调用**：
+
+- **L3 全书脉络闭环使用（防幻觉）**
+  - `_build_l2_foreshadowing_context` 新增【全书脉络】段：仅当伏笔/副线提醒命中（非空）时注入 `arc_summaries.book_summary.summary`（写前回溯全书早期细节）；提醒为空不注入，避免常驻 token
+  - **单章路径合成 L3**：`run_chapter_task` 写到全书最后一章（`chapter_num == num_chapters`）时合成一次全书摘要，与批量路径（循环结束合成）行为对称；`num_chapters` 未设（0/None）跳过；摊薄 1/N，不占每章预算
+- **known_by 信息约束闭环使用（防 OOC）**
+  - 新增 `build_known_by_constraints`（纯规则，零 LLM）：过滤 open/touched 且 known_by 非空的伏笔，取「最近触碰前 5 条 ∪ 伏笔提醒命中项」去重，渲染「- 伏笔：已知晓者 [...]（第N章埋设…）」；每章独立注入【信息约束】，防角色说出不该知道的事
+- **ARC_SIZE 配置化**
+  - `config.py` 新增 `ARC_SIZE: int = 15`（读 env `ARC_SIZE`）；`task_service` 模块加载时读取、保留模块级名（既有 `@patch("task_service.ARC_SIZE", N)` 测试零改动）
+- **台账无变化写回修复**
+  - `_merge_foreshadowing_ledger` 加 `copy.deepcopy` 快照 + `existed` 守卫：merge 前后无变化跳过写回（不再空 bump version）；资产缺失仍初始化空台账（旧项目兼容）
+- **单元测试**
+  - `test_foreshadowing_ledger.py` 新增 known_by 约束 8 用例（最近 5 条 / 提醒命中越界含入 / 去重 / 已回收排除 / 空 known_by / 宽容解析）
+  - `test_p3b_wiring.py` 新增：L3 与信息约束注入 4 用例、台账 no-change 不 bump 3 用例、单章路径 `run_chapter_task` 6 用例（非边界 LLM=6 / arc 边界=7 / 末章合成 L3 / num_chapters=0 跳过 / 旧项目兼容 / 边界+末章重叠）
+- **已知限制（本期不修，已记录）**
+  - arc 摘要冻结并发竞态：后果无害（重复一次 LLM、数据幂等），DB 行锁改动大，任务串行实际不触发
+  - `ARC_SIZE` 仅支持环境变量级配置（非 per-project），满足「可配」承诺的最小兑现
 
 ### V3 P3-A：去危机化 + 题材化伏笔/节奏方法论
 

@@ -129,8 +129,8 @@
 | settings | 世界观设定 |
 | drama_plan | 短剧改编计划 |
 | world_state | 世界状态（结构化记忆，P2-A） |
-| arc_summaries | 记忆分层 L2/L3：`{arcs:[{arc_index,chapter_range,title,summary,frozen_at}], book_summary}`（P3-B，arc 摘要冻结不覆盖） |
-| foreshadowing | 伏笔台账（纯规则，P3-B）：`{entries:[{name,note,added_chapter,last_touch_chapter,planned_recovery_range,status,subplot,known_by,tags}], unmatched}` |
+| arc_summaries | 记忆分层 L2/L3：`{arcs:[{arc_index,chapter_range,title,summary,frozen_at}], book_summary}`（P3-B：arc 摘要冻结不覆盖；L3 `book_summary` 在批量结束 / 单章最后一章各合成一次，写前在伏笔提醒命中时以【全书脉络】注入） |
+| foreshadowing | 伏笔台账（纯规则，P3-B）：`{entries:[{name,note,added_chapter,last_touch_chapter,planned_recovery_range,status,subplot,known_by,tags}], unmatched}`；`known_by` 由写前【信息约束】消费（每章最近触碰 5 条 + 提醒命中伏笔），防角色说出不该知道的事 |
 
 > 注：早期版本曾使用的 `character_state` / `global_summary` / `world_rule` / `timeline` / `adaptation_plan` 等类型已不在现行白名单，属历史遗留；`inspiration` 由灵感服务单独维护（不在 ASSET_TYPES 白名单内）。
 
@@ -279,6 +279,7 @@ chat_sessions ||--o{ chat_messages : contains
 | 2026-05-05 | 添加 drama_episodes | 短剧集（扁平化设计，直接关联 projects） |
 | 2026-05-09 | 添加 chat | chat_sessions / chat_messages |
 | 2026-05-10 | users 表新增 LLM 配置字段 | `llm_api_key_encrypted` / `llm_base_url` / `llm_model` / `llm_config_updated_at` |
+| 2026-08-06 | V3 P3-B 闭环 | `arc_summaries.book_summary` 由单章最后一章合成并闭环注入（伏笔提醒命中时）；`foreshadowing.known_by` 由写前【信息约束】消费（每章最近 5 条 + 提醒命中） |
 
 ### 扁平化设计决策（D005）
 

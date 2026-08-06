@@ -221,6 +221,8 @@ MVP 阶段取消与重试通过 API 触发：
 [Chroma] 新增章节向量
 ```
 
+> P3-B 记忆闭环（章节生成路径）：写前组装「已冻结 arc 摘要 + 全书脉络（L3，仅伏笔提醒命中时）+ 伏笔/副线提醒 + known_by 信息约束」注入 `world_state_summary`；写后台账合并（无变化不写回）+ arc 边界冻结 + 全书结束合成 L3（批量结束 / 单章最后一章各一次）；全部失败安全且零新增每章 LLM 调用（L2/L3 摊薄 1/N）。
+
 ### 5.2 短剧改编流程
 
 ```
@@ -276,6 +278,7 @@ GitHub
 | REDIS_URL | Redis 连接 |
 | JWT_SECRET | JWT 签名密钥 |
 | CHROMA_PERSIST_DIR | Chroma 持久化目录 |
+| ARC_SIZE | arc 章节数（每 N 章冻结一次 arc 摘要，摊薄 1/N；默认 15） |
 
 ---
 

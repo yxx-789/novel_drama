@@ -61,6 +61,7 @@ Render 提供免费的 Web Service 和 PostgreSQL（90 天有效期）。Vercel 
 | `JWT_SECRET` | 随机字符串 | `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `FERNET_SECRET` | Fernet 密钥 | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
 | `CORS_ORIGINS` | 先填 `*` | 部署完前端再改成 Vercel 地址 |
+| `ARC_SIZE` | `15` | arc 章节数（每 N 章冻结一次 arc 摘要），可省略，默认 15 |
 
 **Redis 获取方式（免费）：**
 
@@ -169,6 +170,7 @@ cd novel_drama
 # 5. 配置生产环境变量（.env 已被 gitignore，不会提交）
 cp .env.production.example .env
 # 编辑 .env，填入 JWT_SECRET、FERNET_SECRET、LLM_API_KEY（你的 DeepSeek Key）
+# 可选：ARC_SIZE（arc 章节数，默认 15，模板已含）
 
 # 6. 启动生产全栈（Nginx + PostgreSQL + Redis + 后端 + Worker）
 docker compose -f docker-compose.prod.yml up -d --build

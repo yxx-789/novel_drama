@@ -40,6 +40,18 @@ Phase 1: 最小业务闭环 —— 项目 API（已完成）
 - [x] 文档：CHANGELOG「V3 P3-A」、plan 全勾选、roadmap 阶段 2 状态 →「已实现」
 - [ ] 真实 LLM 出稿抽查（待配 API key）：日常流项目正文无"异常征兆/打破平衡"硬痕迹、悬疑项目保留悬念与伏笔回收、章末钩子落四断法之一
 
+### V3 P3-B：记忆分层 + 伏笔台账（2026-08-06）
+
+- [x] `foreshadowing_ledger.py`：纯规则台账模块（无 LLM）——`merge_foreshadowing_delta(ledger, memory, genre, chapter_num)`（added 新增 entry + 回收区间按题材参数表 mid / touched 触碰 / recovered 回收 / subplot_advanced 副线标记，已 recovered/abandoned 不重开，同名重复合并 known_by，命名漂移进 unmatched 不静默丢弃）+ `build_foreshadowing_reminder(ledger, current_chapter, methodology)`（逾期该碰 / 进入回收窗口该回收 / 副线闲置 >20 章提醒，无内容返回空串）
+- [x] `prompts.py`：`chapter_memory_extract_prompt` 扩展 `foreshadowing_added[].known_by` / `foreshadowing_touched` / `foreshadowing_recovered` / `subplot_advanced`；新增 `build_arc_summary_prompt`（150-400 字）/ `synthesize_book_summary_prompt`（200-500 字）
+- [x] `generation_service.py`：`extract_chapter_memory` 解析新字段（缺失补空列表，旧格式兼容）；新增 `build_arc_summary(chapters, llm_config, arc_size=None) -> dict`（真实章节号 + summary/chapter_range，未配置/异常/空返回 → {}）+ `synthesize_book_summary(arcs, llm_config) -> str`
+- [x] 接线：`task_service.py` 新增 `ARC_SIZE=15` 与 6 个辅助函数（`_get_asset_json` / `_save_asset_json` / `_build_l2_foreshadowing_context` / `_merge_foreshadowing_ledger` / `_finalize_arc_summary` / `_synthesize_book_summary_asset`）；单章 + 批量写前追加 L2 上下文（已冻结 arc 摘要 + 伏笔/副线提醒）、写后台账合并 + arc 边界冻结（先查资产再触发 LLM，冻结不覆盖）、批量结束合成全书摘要（L3）；全部失败安全
+- [x] `routers/assets.py`：`ASSET_TYPES` 白名单新增 `arc_summaries` / `foreshadowing`
+- [x] **单章 LLM 调用数不变**：非 arc 边界 6（现状），arc 边界 7（含 arc 摘要，摊薄 1/N）；`_invoke_with_retry` 仍为 16 处，接线零新增调用
+- [x] 测试：`test_foreshadowing_ledger.py`（19）+ `test_arc_summary.py`（15）+ `test_p3b_wiring.py`（26）；全量 290 用例通过
+- [x] 文档：CHANGELOG「V3 P3-B」、plan 全勾选、roadmap 阶段 3 状态 →「已实现」、decisions D018
+- [ ] 端到端（可选，待真实环境 + API key）：30 章 + 项目抽查 arc 摘要仍保留前 10 章关键事件；伏笔台账逐章更新、逾期/待回收/副线闲置在写前上下文出现
+
 ### Phase 0 文档
 
 - [x] 项目定位与整合方向确定（AI_NovelGenerator + novel_to_drama → Web 工作台）

@@ -349,7 +349,7 @@ Authorization: Bearer <token>
 }
 ```
 
-**asset_type 枚举**：architecture, directory, characters, settings, drama_plan
+**asset_type 枚举**：architecture, directory, characters, settings, drama_plan, world_state, arc_summaries, foreshadowing
 
 ### 短剧改编
 

@@ -119,17 +119,20 @@
 **唯一约束**：(project_id, asset_type)
 **索引**：project_id
 
-**asset_type 枚举**：
+**asset_type 枚举**（当前 `routers/assets.py` ASSET_TYPES 白名单）：
 
 | 类型 | 内容说明 |
 |------|---------|
 | architecture | 小说架构（世界观、角色、情节蓝图） |
 | directory | 章节目录 |
-| character_state | 角色状态汇总 |
-| global_summary | 全局摘要 |
-| world_rule | 世界规则 |
-| timeline | 时间线事件 |
-| adaptation_plan | 短剧改编计划 |
+| characters | 结构化角色卡（`content_json` 双通道，P2-B） |
+| settings | 世界观设定 |
+| drama_plan | 短剧改编计划 |
+| world_state | 世界状态（结构化记忆，P2-A） |
+| arc_summaries | 记忆分层 L2/L3：`{arcs:[{arc_index,chapter_range,title,summary,frozen_at}], book_summary}`（P3-B，arc 摘要冻结不覆盖） |
+| foreshadowing | 伏笔台账（纯规则，P3-B）：`{entries:[{name,note,added_chapter,last_touch_chapter,planned_recovery_range,status,subplot,known_by,tags}], unmatched}` |
+
+> 注：早期版本曾使用的 `character_state` / `global_summary` / `world_rule` / `timeline` / `adaptation_plan` 等类型已不在现行白名单，属历史遗留；`inspiration` 由灵感服务单独维护（不在 ASSET_TYPES 白名单内）。
 
 ---
 

@@ -2,6 +2,28 @@
 
 ## [未发布]
 
+### V3 P3-B：记忆分层 + 伏笔台账
+
+- **记忆分层（L1/L2/L3，无新增表，存 `ProjectAsset.content_json`）**
+  - L1 单章实际摘要（现有 `Chapter.actual_summary_json`，逐章覆盖，不变）；L2 **arc 摘要**（每 `ARC_SIZE=15` 章一段，模块常量可配置）：arc 边界（`chapter_num % ARC_SIZE == 0`）触发一次 `build_arc_summary`，输入本 arc 各章 `actual_summary_json`，写入 `arc_summaries` 资产，**写定后冻结不覆盖**（先查资产再触发 LLM，避免重复调用）；L3 **全书摘要**：批量生成循环结束时由各已冻结 arc 摘要合成一次，写入同资产 `book_summary`
+  - 写前组装优先级对齐 L1/L2：`previous_chapter_summary` 维持 L1（现状不变）；`world_state_summary` 尾部追加「已冻结 arc 摘要（最近完成 arc）」+「伏笔/副线提醒」，**零新增 LLM 调用**（纯资产读取 + 纯规则）
+  - LLM 调用数约束：非 arc 边界单章 = 现状 6；arc 边界 = 7（含 arc 摘要，摊薄 1/N）；全书摘要只在批量结束合成一次
+  - 旧项目无 `arc_summaries` / `foreshadowing` 资产 → 自动初始化空结构，行为回退现状（只用 L1）
+
+- **伏笔台账（`foreshadowing_ledger.py`，纯规则零 LLM）**
+  - 新资产 `foreshadowing`（`ProjectAsset.content_json`）：`entries`（id/name/note/added_chapter/last_touch_chapter/planned_recovery_range/status/subplot/known_by/tags）+ `unmatched`（LLM 命名漂移暂存，不静默丢弃）
+  - 更新源复用 `extract_chapter_memory` 同一 LLM 调用（扩展输出字段）：`foreshadowing_added[].known_by` / `foreshadowing_touched` / `foreshadowing_recovered` / `subplot_advanced`；`merge_foreshadowing_delta` 写后台账合并（新增/触碰/回收/副线标记，已 recovered/abandoned 不重开，同名重复合并 known_by）
+  - 写前注入 `build_foreshadowing_reminder`（纯规则）：逾期未碰「该碰一下」/ 进入回收窗口「该考虑回收」/ 副线闲置 >20 章提醒
+
+- **接线与资产白名单**
+  - `task_service.py`：新增 `ARC_SIZE=15`、`_get_asset_json` / `_save_asset_json` / `_build_l2_foreshadowing_context` / `_merge_foreshadowing_ledger` / `_finalize_arc_summary` / `_synthesize_book_summary_asset`；单章 `run_chapter_task` 与批量 `run_batch_chapters_task` 写前追加 L2 上下文、写后台账合并 + arc 边界冻结、批量结束全书摘要；全部失败安全（try/except，不中断生成）
+  - `routers/assets.py`：`ASSET_TYPES` 白名单新增 `arc_summaries` / `foreshadowing`（可查看/导出）
+
+- **单元测试**
+  - `test_foreshadowing_ledger.py`（19 用例）：新增/触碰/回收/逾期状态迁移、恢复窗口端点、known_by 去重、命名漂移进 unmatched、已回收不重开
+  - `test_arc_summary.py`（15 用例）：`build_arc_summary` 成功/未配置/异常/空返回/无可记忆不调 LLM、`synthesize_book_summary` 合成与回退、`extract_chapter_memory` 新字段解析与缺失补空
+  - `test_p3b_wiring.py`（26 用例）：资产读写、L2 上下文组装、台账合并写回、arc 边界冻结不覆盖、全书摘要合成、批量接线（旧项目兼容 + LLM 调用数断言：非边界 6 / 边界 7）
+
 ### V3 P3-A：去危机化 + 题材化伏笔/节奏方法论
 
 - **题材方法论层（`genre_methodology.py`）**

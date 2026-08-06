@@ -194,6 +194,19 @@
 
 ---
 
+## D018：记忆分层 + 伏笔台账 —— 冻结 arc 摘要 + 纯规则台账
+
+| 字段 | 内容 |
+|------|------|
+| **背景** | 体检报告 C 缺陷（长线稀释 + 伏笔/副线丢失）：`actual_summary_json` 逐章覆盖，第 30 章摘要只代表"第 30 章"，前 10 章关键事件已被"摘要的摘要"稀释；`extract_chapter_memory` 输出 `foreshadowing_added` 但无人追踪后续（不触碰/不回收/不逾期），伏笔静默丢失 |
+| **选项** | A. 把所有历史章节摘要全文喂回上下文（上下文爆炸，长篇小说不可行）；B. 记忆分层：L1 逐章（现状不变）+ L2 arc 摘要（每 15 章，**写定后冻结**，写入前按优先级组装）+ L3 全书摘要（由冻结 arc 摘要合成）；伏笔台账用**纯规则模块**（`merge_foreshadowing_delta` / `build_foreshadowing_reminder`）收敛每章输出、追踪触碰/回收/逾期/副线闲置；C. 台账交给 LLM 逐章总结维护（每章新增调用，违反"不新增 LLM 调用"约束） |
+| **决策** | **B：L1/L2/L3 记忆分层 + 纯规则伏笔台账**。arc 摘要仅在 `chapter_num % ARC_SIZE == 0` 边界触发一次（摊薄 1/N，不在逐章热路径），冻结不覆盖（先查资产再触发 LLM，避免重复调用）；台账更新复用 `extract_chapter_memory` 同一 LLM 调用的扩展输出字段，**零新增 LLM 调用** |
+| **理由** | 1. **单章 LLM 调用数不变**：非 arc 边界 6（现状），arc 边界 7；`_invoke_with_retry` 仍为 16 处；2. 台账纯规则可测、无 LLM 成本、命名漂移进 `unmatched` 不静默丢弃；3. 旧项目无新资产 → 自动初始化空结构，行为回退现状；4. 已知事实 `known_by` 落在台账（对齐 QMAI 三态"角色不知道"一面），角色卡只存引用，避免双写不一致（D3）；5. arc 摘要冻结解决长线稀释——早期细节不再被后续 arc 覆盖 |
+| **影响** | `foreshadowing_ledger.py`（纯规则）+ `prompts.py` 记忆提取字段扩展 + `generation_service.py` 新增 `build_arc_summary` / `synthesize_book_summary` + `task_service.py` 接线（写前 L2 上下文、写后台账合并 + arc 边界冻结、批量结束全书摘要）+ `routers/assets.py` 白名单新增 `arc_summaries` / `foreshadowing`；测试 290 用例通过；文档 CHANGELOG「V3 P3-B」、roadmap 阶段 3 →「已实现」 |
+| **可逆性** | 高。全部为新增资产与新增钩子，无数据迁移；回退仅需移除 task_service 接线调用 + 白名单条目 |
+
+---
+
 ## 待决策项
 
 以下决策在开发过程中根据实际情况确定：

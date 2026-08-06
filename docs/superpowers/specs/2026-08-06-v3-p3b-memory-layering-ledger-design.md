@@ -28,7 +28,7 @@
 |---|---|---|---|
 | L1 | 单章实际摘要（现有） | `Chapter.actual_summary_json` | 逐章覆盖（现状，不变） |
 | L2 | **arc 摘要**：每 N 章一段（默认 N=15，可配） | 新资产 `arc_summaries`：`{arcs: [{arc_index, chapter_range, title, summary, frozen_at}], book_summary: {...}}` | **arc 完成后冻结，不被后续 arc 覆盖** |
-| L3 | 全书摘要：由已冻结的 arc 摘要合成 | 同上 `book_summary` | arc 每完成后增量刷新 |
+| L3 | 全书摘要：由已冻结的 arc 摘要合成 | 同上 `book_summary` | 批量生成结束时合成一次（增量演进留给后续） |
 
 **arc 摘要生成时机**：仅当 `chapter_num % ARC_SIZE == 0`（arc 边界）触发一次 `build_arc_summary` LLM 调用，输入=本 arc 各章的 `actual_summary_json`（已提取，无需重读正文）。摊薄成本 = 1/N 次/章，**不在逐章热路径**。全书写完时用各 arc 摘要合成 book_summary（1 次调用）。
 
@@ -75,8 +75,8 @@
 ```
 
 **台账合并（纯规则，无 LLM）**：
-- `foreshadowing_added` → 新增 entry（`status=open`，`planned_recovery_range` 按题材参数表取）
-- `foreshadowing_touched` → 匹配 name 设 `status=touched`、更新 `last_touch_chapter`、合并 `known_by`
+- `foreshadowing_added` → 新增 entry（`status=open`，`planned_recovery_range` 按题材参数表取）；同名已存在则视为触碰，合并 `known_by`/`note`
+- `foreshadowing_touched` → 匹配 name 设 `status=touched`（已 recovered/abandoned 不重开）、更新 `last_touch_chapter`；`touched` 是纯名字列表，**不携带 known_by**，仅同名重复 `added` 时才合并 `known_by`
 - `foreshadowing_recovered` → 匹配 name 设 `status=recovered`
 - 匹配失败（LLM 命名漂移）→ 保留到 `unmatched` 数组，人工/后续章节再合并，不静默丢弃
 

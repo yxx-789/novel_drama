@@ -49,7 +49,7 @@
 |---|---|---|---|---|
 | 1 | P2-B | 角色卡（characters 资产 JSON 化 + 双通道兼容） | B、角色一致性 | 既有 spec/plan，**先行执行** |
 | 2 | P3-A | 去危机化（structure 条件化）+ 题材伏笔/节奏方法论层 + 钩子四断法 | A、F | **已实现**（P3-A：`genre_methodology.py` + `structure_guidance.py` + 接线 + 记忆中性化；单章 LLM 调用数不变） |
-| 3 | P3-B | 记忆分层（arc 级摘要冻结 + 实体档案加载）+ 伏笔台账/副线提醒 | C | 设计定稿，执行待定 |
+| 3 | P3-B | 记忆分层（arc 级摘要冻结 + 实体档案加载）+ 伏笔台账/副线提醒 | C | **已实现**（P3-B：`foreshadowing_ledger.py` + `build_arc_summary` / `synthesize_book_summary` + task_service 接线 + 资产白名单；arc 摘要冻结不覆盖，台账零新增 LLM 调用，非边界单章 LLM 调用数不变） |
 | 4 | P3-C | 质量双通道（机械规则先执行 + LLM 评审只设计）+ 受众档位操作化 | D、E、G | 设计定稿，机械规则可执行 |
 
 **依赖**：

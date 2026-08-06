@@ -30,23 +30,23 @@
   - `load_active_character_cards(db, project_id, chapter, llm_config) -> str`（只注入出场角色卡文本）
   - `_render_character_cards(characters_json, active_names) -> str`（渲染角色卡为 prompt 文本）
 
-- [ ] **Step 1: prompt**——`character_card_update_prompt`：输入旧角色卡 JSON + 本章草稿 + 出场角色 → 输出更新后角色卡 JSON（含 profile/current_state/relations/known/last_appearance/trajectory）
+- [x] **Step 1: prompt**——`character_card_update_prompt`：输入旧角色卡 JSON + 本章草稿 + 出场角色 → 输出更新后角色卡 JSON（含 profile/current_state/relations/known/last_appearance/trajectory）
 
-- [ ] **Step 2: `update_character_cards`**
+- [x] **Step 2: `update_character_cards`**
   - 读 characters 资产（JSON 或旧文本）
-  - 旧文本 → 尝试 LLM 转 JSON（一次）或降级
-  - 调 LLM 更新 → `_parse_llm_json` → 存回 characters 资产（JSON）
+  - 旧文本 → 首次更新时自动迁移为角色卡结构
+  - 调 LLM 更新 → `_parse_llm_json` → 双通道存回（content_json=卡片 / content_text=渲染）
   - 失败回退：保留旧状态，不抛异常
 
-- [ ] **Step 3: `load_active_character_cards`**
+- [x] **Step 3: `load_active_character_cards`**
   - 读 characters 资产
-  - 从上一章 actual_summary_json.characters（或目录本章简介）确定出场角色名
+  - 从上一章 actual_summary_json.characters 确定出场角色名（取交集）
   - `_render_character_cards` 只渲染出场角色卡 → 返回文本
   - 旧文本 → 原样返回（降级）
 
-- [ ] **Step 4: 测试**——mock LLM 测 update（含旧文本→JSON 转换、失败回退）；load 只渲染出场角色；兼容
+- [x] **Step 4: 测试**——mock LLM 测 update（含旧文本→JSON 迁移、失败回退）；load 只渲染出场角色；兼容（17 用例）
 
-- [ ] **Step 5: 测试 + Commit**
+- [x] **Step 5: 测试 + Commit**
 
 ```bash
 git add backend/app/generator/prompts.py backend/app/services/generation_service.py backend/app/tests/
@@ -63,12 +63,12 @@ git commit -m "feat: character cards system (update + active loading)"
 **Interfaces:**
 - Consumes: `update_character_cards` / `load_active_character_cards`（Task 1）
 
-- [ ] **Step 1: 接入**——章节生成前：`character_state_text = await load_active_character_cards(...)`（替代直接读 characters 资产全文）；章节生成后：`update_character_cards(...)` 替代 update_character_state 存回
+- [x] **Step 1: 接入**——章节生成前：`character_state_text = await load_active_character_cards(...)`（替代直接读 characters 资产全文）；章节生成后：`update_character_cards(...)` 替代 update_character_state 存回；批量移除内存累积
   - 兼容：若 load 返回空/降级，行为与现在一致
 
-- [ ] **Step 2: 验证**——容器 import + 单测
+- [x] **Step 2: 验证**——全量单测 198 通过（本机 venv 补齐 asyncpg/redis 等缺失依赖）
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add backend/app/services/task_service.py
@@ -82,10 +82,10 @@ git commit -m "feat: wire character cards into chapter generation"
 **Files:**
 - Modify: `docs/CHANGELOG.md`
 
-- [ ] **Step 1: 端到端**（可选）——真实生成 2 章，检查 characters 资产是 JSON 角色卡、写前只加载出场角色
-- [ ] **Step 2: 回归**——后端全量测试
-- [ ] **Step 3: CHANGELOG**——「V3 P2-B：角色卡系统」
-- [ ] **Step 4: Commit**
+- [x] **Step 1: 端到端**（可选，已跳过）——真实生成 2 章需真实 LLM + 容器，本机不可行；以全量单测回归代替（含双通道写回、旧文本迁移、逐章加载等断言）
+- [x] **Step 2: 回归**——后端全量测试 198 通过
+- [x] **Step 3: CHANGELOG**——「V3 P2-B：角色卡系统」
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/CHANGELOG.md
@@ -96,8 +96,8 @@ git commit -m "docs: record V3 P2-B character cards"
 
 ## 验收清单
 
-- [ ] characters 资产为结构化 JSON 角色卡
-- [ ] 每章写后角色卡更新（状态/关系/known/出场）
-- [ ] 写前只加载出场角色卡
-- [ ] 旧文本 characters 兼容（降级注入，不崩溃）
-- [ ] 既有功能回归正常
+- [x] characters 资产为结构化 JSON 角色卡（双通道：content_json 卡片 + content_text 渲染）
+- [x] 每章写后角色卡更新（状态/关系/known/出场）
+- [x] 写前只加载出场角色卡
+- [x] 旧文本 characters 兼容（降级注入，不崩溃；首次更新自动迁移）
+- [x] 既有功能回归正常（全量 198 用例通过）

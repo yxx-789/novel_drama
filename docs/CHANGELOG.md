@@ -2,6 +2,30 @@
 
 ## [未发布]
 
+### V3 P2-B：角色卡系统
+
+- **characters 资产重构为结构化角色卡（双通道存储）**
+  - `characters` 资产新增 `content_json` 通道（JSONB）保存结构化角色卡：每张卡片含 `profile`（人设）/ `current_state`（当前状态）/ `relations`（关系）/ `known`（认知边界：知道与不知道）/ `last_appearance`（最近出场章）/ `trajectory`（角色轨迹）
+  - `content_text` 保留为卡片的可读 Markdown 渲染（`_render_character_cards`），drama 改编 / 导出 / 前端（ArchitectureTab 等读 `content_text` 的既有功能）不受格式变更影响
+  - 旧项目兼容：`content_json` 缺失时 `load_active_character_cards` 原样返回旧文本 `content_text`（与改造前行为一致）；首次章节更新时自动迁移为角色卡结构
+
+- **写前只加载出场角色卡（load_active_character_cards）**
+  - 章节生成前从上一章 `actual_summary_json.characters` 取出场角色名单，与现有卡片取交集，只渲染出场角色卡注入 prompt，防止长篇小说角色状态随章数增长稀释上下文
+  - 第 1 章 / 上一章无 characters 记录 → 渲染全部卡片兜底；无 characters 资产 → 返回空串
+
+- **写后角色卡更新（update_character_cards）**
+  - 新 prompt `character_card_update_prompt`：输入本章正文 + 当前角色档案（JSON 卡片或旧版文本均可）→ 输出更新后角色卡 JSON；要求未出场角色「原样保留」、`known` 同时记录知道与不知道、轨迹追加不删除历史
+  - 更新成功双通道写回（`content_json`=卡片 / `content_text`=渲染）；缺失 `last_appearance` 兜底为本章号；失败 / LLM 未配置 / 空正文返回 `None` 保留旧状态，不中断生成
+  - `generation_service.py` 新增 `_load_character_asset` / `_render_character_cards` / `_active_character_names` / `load_active_character_cards` / `update_character_cards`；`_save_asset` 保持不变
+
+- **task_service 接入（run_chapter_task / run_batch_chapters_task）**
+  - 单章与批量章节生成：写前改用 `load_active_character_cards` 加载出场角色卡（替代直接读 characters 资产全文）；写后用 `update_character_cards` 更新（替代 `update_character_state`）
+  - 批量任务移除循环外全量加载与内存累积（`character_state_text = new_state`），每章按章号从资产重新加载出场角色卡
+
+- **单元测试**
+  - `test_character_cards.py`（17 用例）：渲染（全部/按出场/畸形降级）、加载（出场过滤/第 1 章兜底/旧文本原样/无资产）、更新（成功双通道写回/旧文本迁移/非法 JSON/LLM 异常/未配置/空正文/新建资产）、prompt 占位符与「原样保留」防回归
+  - `test_chapter_memory.py` 批量管线新增逐章验证：每章按章号加载出场角色卡、草稿 prompt 收到来自 `load_active_character_cards` 的角色文本、写后 `update_character_cards` 更新
+
 ### V3 P2-A：结构化章节记忆
 
 - **章节实际摘要落库（actual_summary_json）**

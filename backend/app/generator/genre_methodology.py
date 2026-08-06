@@ -287,3 +287,10 @@ def _render_genre_methodology(genre: str) -> str:
     hook_str = "、".join(hook)
     parts.append(f"章末钩子偏好：{hook_str} 优先（四断法：决定/发现/误判/代价），断在变化发生的那一刻，不在章尾总结。")
     return " ".join(parts)
+
+
+def _render_hook_preference(genre: str) -> str:
+    """渲染章末钩子偏好为「发现、误判」式短文本（供 {hook_preference} 占位符）。"""
+    m = get_genre_methodology(genre)
+    prefs = m.get("hook_preference") or HOOK_FOUR_BREAKS[:2]
+    return "、".join(prefs)

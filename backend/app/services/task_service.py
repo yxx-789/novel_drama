@@ -9,6 +9,7 @@ from app.infra.database import AsyncSessionLocal
 from app.models.project import Project, ProjectAsset, Task
 from app.services.drama_service import generate_drama_outline, generate_drama_script
 from app.services.generation_service import (
+    _structure_for_project,
     build_state_summary,
     check_chapter_consistency,
     extract_chapter_memory,
@@ -290,6 +291,7 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                 raise RuntimeError("Project not found")
 
             llm_config = await resolve_llm_config(str(project.owner_id), db)
+            structure = _structure_for_project(project)
 
             chapter_num = 1
             if task.params and isinstance(task.params, dict):
@@ -349,6 +351,7 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                         chapter_title=current_chapter_info["chapter_title"] if current_chapter_info else "",
                         chapter_summary=current_chapter_info["chapter_summary"] if current_chapter_info else "",
                         llm_config=llm_config,
+                        structure=structure,
                     )
                 except Exception as e:
                     logger.warning(f"Build state summary failed for chapter {chapter_num}: {e}")
@@ -402,6 +405,7 @@ async def run_chapter_task(task_id: uuid.UUID) -> None:
                     current_state=world_state,
                     template=template,
                     llm_config=llm_config,
+                    structure=structure,
                 )
                 if not delta.get("no_changes"):
                     world_state = merge_world_state(world_state, delta)
@@ -510,6 +514,7 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                 raise RuntimeError("Project not found")
 
             llm_config = await resolve_llm_config(str(project.owner_id), db)
+            structure = _structure_for_project(project)
 
             architecture_text = await _get_asset_text(db, str(task.project_id), "architecture")
             if not architecture_text:
@@ -580,6 +585,7 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                                 chapter_title=current_chapter_info["chapter_title"] if current_chapter_info else "",
                                 chapter_summary=current_chapter_info["chapter_summary"] if current_chapter_info else "",
                                 llm_config=llm_config,
+                                structure=structure,
                             )
                         except Exception as e:
                             logger.warning(f"Batch build state summary failed for chapter {chapter_num}: {e}")
@@ -635,6 +641,7 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                             current_state=world_state,
                             template=template,
                             llm_config=llm_config,
+                            structure=structure,
                         )
                         if not delta.get("no_changes"):
                             world_state = merge_world_state(world_state, delta)

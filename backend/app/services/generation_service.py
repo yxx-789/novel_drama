@@ -14,8 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import re
 
 from app.generator.block_library import build_context
+from app.generator.genre_methodology import _render_genre_methodology, _render_hook_preference
 from app.generator.prompts import (
     architecture_consistency_prompt,
+    calm_build_state_summary_suffix,
+    calm_extract_world_state_suffix,
     chapter_blueprint_prompt,
     character_dynamics_prompt,
     core_seed_prompt,
@@ -26,6 +29,7 @@ from app.generator.prompts import (
     update_character_state_prompt,
     world_building_prompt,
 )
+from app.generator.structure_guidance import CALM_STRUCTURES, build_structure_guidance
 from app.models.project import Project, ProjectAsset
 
 logger = logging.getLogger(__name__)
@@ -55,6 +59,22 @@ def _prompt_context_for_project(project: Project) -> tuple[str, str]:
     if not isinstance(creative_intent, str) or not creative_intent.strip():
         return writing_context, _NO_CREATIVE_INTENT_PLACEHOLDER
     return writing_context, creative_intent.strip()
+
+
+def _structure_for_project(project: Project) -> str | None:
+    """
+    从 project.writing_config 读取叙事结构。
+
+    返回 str（结构名，如「日常流」）；无 writing_config / 非字符串 / 空白 → None。
+    调用方以 None 传入 build_structure_guidance 即回退危机基线（旧项目行为不变）。
+    """
+    writing_config = getattr(project, "writing_config", None)
+    if not isinstance(writing_config, dict):
+        return None
+    structure = writing_config.get("structure")
+    if not isinstance(structure, str) or not structure.strip():
+        return None
+    return structure.strip()
 
 
 def _make_adapter(temperature: float, llm_config: dict | None = None) -> object:
@@ -115,6 +135,7 @@ async def generate_architecture(
     adapter = _make_adapter(temperature=0.3, llm_config=llm_config)
 
     writing_context, creative_intent = _prompt_context_for_project(project)
+    guidance = build_structure_guidance(_structure_for_project(project))
 
     # Step 1: Core seed
     prompt = core_seed_prompt.format(
@@ -124,6 +145,7 @@ async def generate_architecture(
         word_number=project.word_number or 2000,
         writing_context=writing_context,
         creative_intent=creative_intent,
+        structure_seed_guidance=guidance["seed"],
     )
     core_seed = await _invoke_with_retry(adapter, prompt)
     logger.info("Architecture step 1/5: Core seed generated")
@@ -134,6 +156,7 @@ async def generate_architecture(
         core_seed=core_seed,
         writing_context=writing_context,
         creative_intent=creative_intent,
+        structure_character_guidance=guidance["character"],
     )
     character_dynamics = await _invoke_with_retry(adapter, prompt)
     logger.info("Architecture step 2/5: Character dynamics generated")
@@ -144,6 +167,7 @@ async def generate_architecture(
         core_seed=core_seed,
         writing_context=writing_context,
         creative_intent=creative_intent,
+        structure_world_guidance=guidance["world"],
     )
     world_building = await _invoke_with_retry(adapter, prompt)
     logger.info("Architecture step 3/5: World building generated")
@@ -196,6 +220,7 @@ async def generate_directory(
     adapter = _make_adapter(temperature=0.3, llm_config=llm_config)
 
     writing_context, creative_intent = _prompt_context_for_project(project)
+    guidance = build_structure_guidance(_structure_for_project(project))
 
     prompt = chapter_blueprint_prompt.format(
         user_guidance=user_guidance or "",
@@ -203,6 +228,7 @@ async def generate_directory(
         number_of_chapters=project.num_chapters or 10,
         writing_context=writing_context,
         creative_intent=creative_intent,
+        structure_blueprint_guidance=guidance["blueprint"],
     )
     directory_text = await _invoke_with_retry(adapter, prompt)
     if not directory_text:
@@ -501,6 +527,8 @@ async def generate_chapter_draft(
 
     word_number = project.word_number or 2000
     writing_context, creative_intent = _prompt_context_for_project(project)
+    guidance = build_structure_guidance(_structure_for_project(project))
+    genre_methodology = _render_genre_methodology(project.genre or "")
 
     if chapter_num == 1:
         logger.info(f"Generating chapter {chapter_num} draft (first chapter) ...")
@@ -513,6 +541,8 @@ async def generate_chapter_draft(
             word_number=word_number,
             writing_context=writing_context,
             creative_intent=creative_intent,
+            genre_methodology=genre_methodology,
+            structure_first_chapter_guidance=guidance["first_chapter"],
         )
     else:
         logger.info(f"Generating chapter {chapter_num} draft ...")
@@ -529,6 +559,9 @@ async def generate_chapter_draft(
             word_number=word_number,
             writing_context=writing_context,
             creative_intent=creative_intent,
+            genre_methodology=genre_methodology,
+            structure_chapter_guidance=guidance["chapter"],
+            hook_preference=_render_hook_preference(project.genre or ""),
         )
 
     draft_text = await _invoke_with_retry(adapter, prompt)
@@ -571,10 +604,14 @@ async def extract_world_state_delta(
     current_state: dict,
     template: dict,
     llm_config: dict | None = None,
+    structure: str | None = None,
 ) -> dict:
     """
     从章节文本中提取世界状态变化（Delta）。
     返回：结构化 delta dict
+
+    structure 为平静结构（日常流/群像交织）时追加中性化约束：
+    除变化外保留仍有意义的常态状态（主角身份、稳定关系、重要场所），不当作变化丢弃。
     """
     if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key")):
         return {"changed_in_chapter": chapter_number, "no_changes": True}
@@ -589,6 +626,8 @@ async def extract_world_state_delta(
         chapter_number=chapter_number,
         chapter_text=chapter_text[:4000],  # 截断防止超限
     )
+    if structure and structure.strip() in CALM_STRUCTURES:
+        prompt += calm_extract_world_state_suffix
     logger.info(f"Extracting world state delta for chapter {chapter_number} ...")
     raw = await _invoke_with_retry(adapter, prompt)
     if not raw:
@@ -728,10 +767,17 @@ async def build_state_summary(
     chapter_title: str,
     chapter_summary: str,
     llm_config: dict | None = None,
+    structure: str | None = None,
 ) -> str:
     """
     为后续章节生成提取最相关的世界状态摘要。
     返回：摘要文本（条目列表）
+
+    structure 为平静结构（日常流/群像交织）时：
+    - slim_state 放宽裁剪（每类保留上限 20 条、变更窗口 5 章），让「稳定关系/常态状态」
+      这类跨章常态条目不易被最近变更挤掉；
+    - 摘要 prompt 追加中性化约束：同时保留当前舒适/日常状态与情绪基调。
+    危机结构与缺省行为不变（每类 10 条 / 3 章窗口）。
     """
     if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key")):
         return ""
@@ -740,27 +786,30 @@ async def build_state_summary(
 
     adapter = _make_adapter(temperature=0.2, llm_config=llm_config)
 
-    # 精简 world_state 减少 token
+    is_calm = structure is not None and structure.strip() in CALM_STRUCTURES
+    # 精简 world_state 减少 token；平静结构放宽裁剪，保留更多常态条目
+    max_items = 20 if is_calm else 10
+    recent_window = 5 if is_calm else 3
     slim_state = {}
     for k, v in world_state.items():
         if k == "history":
-            # 只保留最近 3 章变更记录
-            slim_state[k] = v[-3:] if isinstance(v, list) else v
+            # 只保留最近 N 章变更记录
+            slim_state[k] = v[-recent_window:] if isinstance(v, list) else v
         elif k in ("characters", "events", "world"):
-            # 限制每类最多 10 个条目，防止 token 超限
+            # 限制每类最多 max_items 个条目，防止 token 超限
             if isinstance(v, dict):
                 items = list(v.items())
-                if len(items) > 10:
-                    # 优先保留有变更历史的条目（最近 3 章内出现过）
+                if len(items) > max_items:
+                    # 优先保留有变更历史的条目（最近 N 章内出现过）
                     recent_entities = set()
-                    for h in world_state.get("history", [])[-3:]:
+                    for h in world_state.get("history", [])[-recent_window:]:
                         for c in h.get("changes", []):
                             if c.get("category") == k:
                                 recent_entities.add(c.get("entity"))
-                    # 先保留最近有变更的，再按字母顺序补足到 10 个
+                    # 先保留最近有变更的，再按字母顺序补足到 max_items 个
                     prioritized = [(key, val) for key, val in items if key in recent_entities]
                     remaining = [(key, val) for key, val in items if key not in recent_entities]
-                    slim_state[k] = dict(prioritized + remaining[: max(0, 10 - len(prioritized))])
+                    slim_state[k] = dict(prioritized + remaining[: max(0, max_items - len(prioritized))])
                 else:
                     slim_state[k] = v
             else:
@@ -774,6 +823,8 @@ async def build_state_summary(
         chapter_title=chapter_title,
         chapter_summary=chapter_summary,
     )
+    if is_calm:
+        prompt += calm_build_state_summary_suffix
     logger.info(f"Building state summary for chapter {target_chapter} ...")
     result = await _invoke_with_retry(adapter, prompt)
     return result or ""

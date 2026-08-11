@@ -244,8 +244,11 @@ async def run_architecture_task(task_id: uuid.UUID) -> None:
             llm_config = await resolve_llm_config(str(project.owner_id), db)
 
             user_guidance = ""
+            current_content = ""
             if task.params and isinstance(task.params, dict):
                 user_guidance = task.params.get("user_guidance", "")
+                current_content = task.params.get("current_content", "")
+            raw_guidance = user_guidance  # 未拼接灵感的原始提示词，用于版本历史记录
 
             # 注入已导入灵感的创作引导
             try:
@@ -257,11 +260,15 @@ async def run_architecture_task(task_id: uuid.UUID) -> None:
 
             await update_task_status(db, task_id, "running", progress=30)
             architecture_text, character_state_text = await generate_architecture(
-                project, user_guidance=user_guidance, llm_config=llm_config
+                project,
+                user_guidance=user_guidance,
+                current_content=current_content,
+                llm_config=llm_config,
             )
 
             await update_task_status(db, task_id, "running", progress=70)
-            await _save_asset(db, str(task.project_id), "architecture", architecture_text)
+            await _save_asset(db, str(task.project_id), "architecture", architecture_text,
+                              trigger_type="generate", guidance=raw_guidance)
             await _save_asset(db, str(task.project_id), "characters", character_state_text)
 
             await update_task_status(
@@ -343,8 +350,11 @@ async def run_directory_task(task_id: uuid.UUID) -> None:
                 raise RuntimeError("Architecture not found. Please generate architecture first.")
 
             user_guidance = ""
+            current_content = ""
             if task.params and isinstance(task.params, dict):
                 user_guidance = task.params.get("user_guidance", "")
+                current_content = task.params.get("current_content", "")
+            raw_guidance = user_guidance
 
             # 注入已导入灵感的创作引导
             try:
@@ -356,11 +366,16 @@ async def run_directory_task(task_id: uuid.UUID) -> None:
 
             await update_task_status(db, task_id, "running", progress=40)
             directory_text, parsed_chapters = await generate_directory(
-                project, architecture_text=architecture_text, user_guidance=user_guidance, llm_config=llm_config
+                project,
+                architecture_text=architecture_text,
+                user_guidance=user_guidance,
+                current_content=current_content,
+                llm_config=llm_config,
             )
 
             await update_task_status(db, task_id, "running", progress=70)
-            await _save_asset(db, str(task.project_id), "directory", directory_text)
+            await _save_asset(db, str(task.project_id), "directory", directory_text,
+                              trigger_type="generate", guidance=raw_guidance)
             await _ensure_chapters(db, str(task.project_id), parsed_chapters)
 
             await update_task_status(

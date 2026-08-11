@@ -103,6 +103,13 @@ class FakeDB:
         self.versions = []
         self.committed = False
 
+    async def __aenter__(self):
+        # worker 内 `async with AsyncSessionLocal() as db:` 使用
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
     async def execute(self, stmt):
         return _FakeResult(self.results.pop(0) if self.results else None)
 
@@ -193,3 +200,61 @@ class TestRollbackAsset:
         ok = _run(rollback_asset(db, "p1", "architecture", 99))
         assert ok is False
         assert db.versions == []
+
+
+class TestWorkerWiring:
+    """worker 从 task.params 读取 current_content 并传入生成函数；guidance 存原始值。"""
+
+    @patch("app.services.task_service.generate_architecture")
+    @patch("app.services.task_service.get_project_by_id")
+    @patch("app.services.task_service.resolve_llm_config")
+    @patch("app.services.task_service.build_inspiration_guidance")
+    @patch("app.services.task_service._save_asset")
+    def test_architecture_passes_current_content(self, mock_save, mock_insp, mock_llm, mock_proj, mock_gen):
+        from app.services.task_service import run_architecture_task
+
+        project = SimpleNamespace(id="p1", owner_id="u1", topic="t", genre="g",
+                                  num_chapters=3, word_number=1500, writing_config=None)
+        task = SimpleNamespace(
+            id="11111111-1111-1111-1111-111111111111", project_id="22222222-2222-2222-2222-222222222222",
+            params={"project_id": "22222222-2222-2222-2222-222222222222", "user_guidance": "侧重人物", "current_content": "现有架构"},
+        )
+        mock_proj.return_value = project
+        mock_llm.return_value = {"api_key": "k"}
+        mock_insp.return_value = None
+        mock_gen.return_value = ("新架构", "新角色")
+        db = FakeDB(results=[task])
+        with patch("app.services.task_service.AsyncSessionLocal", return_value=db):
+            _run(run_architecture_task("t1"))
+        _, kwargs = mock_gen.call_args
+        assert kwargs["current_content"] == "现有架构"
+        # _save_asset 以原始 guidance（未拼接灵感）写历史
+        # 注：call_args 是最后一次调用（characters 保存，无 kwargs），须按 asset_type 定位 architecture 调用
+        arch_save = next(c for c in mock_save.call_args_list if c.args[2] == "architecture")
+        assert arch_save.kwargs["guidance"] == "侧重人物"
+
+    @patch("app.services.task_service.generate_directory")
+    @patch("app.services.task_service.get_project_by_id")
+    @patch("app.services.task_service.resolve_llm_config")
+    @patch("app.services.task_service.build_inspiration_guidance")
+    @patch("app.services.task_service._save_asset")
+    @patch("app.services.task_service._get_asset_text", return_value="现有架构")
+    def test_directory_passes_current_content(self, mock_text, mock_save, mock_insp, mock_llm, mock_proj, mock_gen):
+        from app.services.task_service import run_directory_task
+
+        project = SimpleNamespace(id="p1", owner_id="u1", topic="t", genre="g",
+                                  num_chapters=3, word_number=1500, writing_config=None)
+        task = SimpleNamespace(
+            id="33333333-3333-3333-3333-333333333333", project_id="44444444-4444-4444-4444-444444444444",
+            params={"project_id": "44444444-4444-4444-4444-444444444444", "user_guidance": "节奏加快", "current_content": "现有目录"},
+        )
+        mock_proj.return_value = project
+        mock_llm.return_value = {"api_key": "k"}
+        mock_insp.return_value = None
+        mock_gen.return_value = ("新目录", [{"chapter_number": 1}])
+        db = FakeDB(results=[task])
+        with patch("app.services.task_service.AsyncSessionLocal", return_value=db):
+            _run(run_directory_task("t1"))
+        _, kwargs = mock_gen.call_args
+        assert kwargs["current_content"] == "现有目录"
+        assert mock_save.call_args.kwargs["guidance"] == "节奏加快"

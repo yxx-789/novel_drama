@@ -1,3 +1,4 @@
+import sqlalchemy as sa
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -66,6 +67,7 @@ class AssetVersion(Base, UUIDMixin, TimestampMixin):
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
 
     __table_args__ = (
+        sa.UniqueConstraint("project_id", "asset_type", "version", name="uq_asset_versions_project_type_version"),
         {"sqlite_autoincrement": True},
     )
 

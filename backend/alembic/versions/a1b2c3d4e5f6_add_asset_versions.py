@@ -4,6 +4,7 @@ Revision ID: a1b2c3d4e5f6
 Revises: 3bae85f20ef6
 Create Date: 2026-08-11
 
+回填 SQL 为 PostgreSQL 专用（gen_random_uuid/now）。
 """
 from typing import Sequence, Union
 
@@ -35,7 +36,6 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('project_id', 'asset_type', 'version', name='uq_asset_versions_project_type_version')
     )
-    op.create_index(op.f('ix_asset_versions_project_type_version'), 'asset_versions', ['project_id', 'asset_type', 'version'], unique=True)
 
     # 存量回填：现有 architecture/directory 内容作为 v1（trigger=manual）
     bind = op.get_bind()
@@ -52,5 +52,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(op.f('ix_asset_versions_project_type_version'), table_name='asset_versions')
     op.drop_table('asset_versions')

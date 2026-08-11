@@ -266,3 +266,80 @@ class TestWorkerWiring:
         dir_save = next(c for c in mock_save.call_args_list if c.args[2] == "directory")
         assert dir_save.kwargs["guidance"] == "节奏加快"
         assert "【创作灵感参考】" not in dir_save.kwargs["guidance"]
+
+
+class TestGenerateRouterGuidance:
+    """生成路由：guidance 入 params、超长 400、快照当前内容。"""
+
+    def _make_client(self, fake_db):
+        import pytest
+        from fastapi.testclient import TestClient
+        from app.main import app
+        from app.infra.database import get_db
+        from app.routers.dependency import get_current_user
+        from app.models.user import User
+
+        async def _fake_get_db():
+            yield fake_db
+
+        async def _fake_get_current_user():
+            u = User()
+            u.id = str(uuid.uuid4())
+            return u
+
+        app.dependency_overrides[get_db] = _fake_get_db
+        app.dependency_overrides[get_current_user] = _fake_get_current_user
+        client = TestClient(app, raise_server_exceptions=False)
+        return client
+
+    def _clear_overrides(self, client):
+        from app.main import app
+        app.dependency_overrides.clear()
+
+    def test_guidance_passed_into_params(self):
+        from app.services.task_service import create_task
+
+        captured = {}
+
+        async def _fake_create_task(db, project_id, task_type, params=None):
+            captured["params"] = params
+            task = SimpleNamespace(
+                id="99999999-9999-4999-8999-999999999999", project_id=str(project_id), task_type=task_type,
+                status="pending", params=params, progress=0,
+                result=None, error_msg=None,
+                created_at="2026-08-11T00:00:00+00:00",
+                updated_at="2026-08-11T00:00:00+00:00",
+            )
+            return task
+
+        # 项目存在 + 当前架构快照。
+        # get_project_by_id 已被 patch（不消耗 results），第一个真实 execute 来自
+        # 路由的 _get_current_asset_text，因此 results 只放快照行（不放 project）。
+        # 路径用合法 UUID：路由签名 project_id: uuid.UUID，用 "p1" 会在路径校验处 422。
+        project = SimpleNamespace(id="11111111-1111-1111-1111-111111111111")
+        db = FakeDB(results=[SimpleNamespace(content_text="现有架构全文")])
+        client = self._make_client(db)
+        with patch("app.routers.generate.get_project_by_id", return_value=project), \
+             patch("app.routers.generate.create_task", side_effect=_fake_create_task), \
+             patch("app.routers.generate.run_architecture.delay") as mock_delay:
+            res = client.post("/api/projects/11111111-1111-1111-1111-111111111111/generate/architecture", json={"guidance": "侧重群像"})
+        self._clear_overrides(client)
+        assert res.status_code == 200, res.text
+        assert captured["params"]["user_guidance"] == "侧重群像"
+        assert captured["params"]["current_content"] == "现有架构全文"
+        mock_delay.assert_called_once_with("99999999-9999-4999-8999-999999999999")
+
+    def test_guidance_too_long_returns_400(self):
+        from app.routers.generate import GUIDANCE_MAX_LEN
+
+        project = SimpleNamespace(id="11111111-1111-1111-1111-111111111111")
+        db = FakeDB(results=[project])
+        client = self._make_client(db)
+        with patch("app.routers.generate.get_project_by_id", return_value=project):
+            res = client.post(
+                "/api/projects/11111111-1111-1111-1111-111111111111/generate/architecture",
+                json={"guidance": "长" * (GUIDANCE_MAX_LEN + 1)},
+            )
+        self._clear_overrides(client)
+        assert res.status_code == 400, res.text
+        assert "优化提示词" in res.json()["detail"]

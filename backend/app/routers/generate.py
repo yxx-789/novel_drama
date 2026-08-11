@@ -1,9 +1,11 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infra.database import get_db
+from app.models.project import ProjectAsset
 from app.models.user import User
 from app.routers.dependency import get_current_user
 from app.schemas.task import TaskOut
@@ -19,20 +21,48 @@ from app.worker.tasks import (
     run_drama_plan,
 )
 
+GUIDANCE_MAX_LEN = 2000
+
 router = APIRouter()
+
+
+async def _get_current_asset_text(db: AsyncSession, project_id: str, asset_type: str) -> str | None:
+    result = await db.execute(
+        select(ProjectAsset).where(
+            ProjectAsset.project_id == project_id,
+            ProjectAsset.asset_type == asset_type,
+        )
+    )
+    asset = result.scalar_one_or_none()
+    return asset.content_text if asset else None
+
+
+def _validate_guidance(payload: dict) -> str:
+    guidance = (payload.get("guidance") or "").strip()
+    if len(guidance) > GUIDANCE_MAX_LEN:
+        raise HTTPException(status_code=400, detail=f"优化提示词不能超过 {GUIDANCE_MAX_LEN} 字")
+    return guidance
 
 
 @router.post("/projects/{project_id}/generate/architecture", response_model=TaskOut)
 async def trigger_architecture_generation(
     project_id: uuid.UUID,
+    payload: dict = {},
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     project = await get_project_by_id(db, project_id, current_user.id)
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在或无权限访问")
+    guidance = _validate_guidance(payload)
+    current_content = await _get_current_asset_text(db, str(project_id), "architecture")
     task = await create_task(
-        db, project_id, "architecture", params={"project_id": str(project_id)}
+        db, project_id, "architecture",
+        params={
+            "project_id": str(project_id),
+            "user_guidance": guidance,
+            "current_content": current_content,
+        },
     )
     run_architecture.delay(str(task.id))
     return task
@@ -41,13 +71,23 @@ async def trigger_architecture_generation(
 @router.post("/projects/{project_id}/generate/directory", response_model=TaskOut)
 async def trigger_directory_generation(
     project_id: uuid.UUID,
+    payload: dict = {},
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     project = await get_project_by_id(db, project_id, current_user.id)
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在或无权限访问")
-    task = await create_task(db, project_id, "directory", params={"project_id": str(project_id)})
+    guidance = _validate_guidance(payload)
+    current_content = await _get_current_asset_text(db, str(project_id), "directory")
+    task = await create_task(
+        db, project_id, "directory",
+        params={
+            "project_id": str(project_id),
+            "user_guidance": guidance,
+            "current_content": current_content,
+        },
+    )
     run_directory.delay(str(task.id))
     return task
 

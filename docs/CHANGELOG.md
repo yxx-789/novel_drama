@@ -2,6 +2,12 @@
 
 ## [未发布]
 
+### 优化重新生成：生成路由接收 guidance + 快照当前全文（Task 5）
+
+- `POST /api/projects/{id}/generate/architecture` 与 `.../generate/directory` 新增可选 body `{"guidance": "..."}`（优化提示词）；guidance 超过 2000 字返回 400，未传按空提示词处理
+- 提交时服务端从资产表取当前版本全文快照，连同 guidance 写入 `task.params.user_guidance` / `task.params.current_content`，供 worker 做优化重新生成与版本历史记录（前序 Task 1-4 已实现 asset_versions 表、prompt 注入、版本写入 service、worker 接线）
+- 测试：`test_asset_versions.py` 新增 `TestGenerateRouterGuidance`（2 用例），全量 13 passed；`test_project_router.py` 回归 3 passed
+
 ### 修复：「角色与世界」Tab 变更历史全显示 `- → -`
 
 - **根因**：后端 `merge_world_state` 写入的变更记录字段是 `entity` / `from` / `to`（`{category, entity, field, from, to}`），前端 `WorldStateTab.tsx` 却按 `key` / `old` / `new` 读取——三个字段全部取不到：实体名渲染为空（只剩 `field` 可见，如 `identity`/`status`），`old`/`new` 为 `undefined` 全部兜底成 `-` → 显示成「`· identity - → -`」

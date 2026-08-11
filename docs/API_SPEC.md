@@ -228,8 +228,8 @@ Authorization: Bearer <token>
 
 | 方法 | 路径 | 说明 | 状态 |
 |------|------|------|------|
-| POST | /projects/{id}/generate/architecture | 生成架构（真实 LLM） | 已实现 |
-| POST | /projects/{id}/generate/directory | 生成目录（真实 LLM） | 已实现 |
+| POST | /projects/{id}/generate/architecture | 生成架构（真实 LLM）；可选 body `{"guidance": "..."}` 优化提示词 | 已实现 |
+| POST | /projects/{id}/generate/directory | 生成目录（真实 LLM）；可选 body `{"guidance": "..."}` 优化提示词 | 已实现 |
 | POST | /projects/{id}/generate/chapter/{num} | 生成章节（真实 LLM） | 已实现 |
 | POST | /projects/{id}/generate/drama-plan | 生成短剧改编计划（任务桩） | 已实现 |
 | POST | /projects/{id}/generate/drama-episode/{num} | 生成短剧单集脚本（支持 chapter_nums 选择） | 已实现 |
@@ -238,11 +238,19 @@ Authorization: Bearer <token>
 
 **请求/响应示例**
 
-生成架构：
+生成架构（优化重新生成：携带 guidance 与当前全文快照）：
 ```http
 POST /api/projects/{id}/generate/architecture
+Content-Type: application/json
 Authorization: Bearer <token>
+
+{
+  "guidance": "侧重群像，压缩世界观铺垫"
+}
 ```
+
+- `guidance` 可选；超过 2000 字返回 400。未传 body 时按空提示词处理，行为与旧版一致。
+- 提交时服务端自动从资产表取当前版本全文作为快照，连同 `guidance` 一并写入 `task.params.user_guidance` / `task.params.current_content`，供 worker 做「优化重新生成」与版本历史记录。
 
 响应（创建任务）：
 ```json
@@ -251,7 +259,11 @@ Authorization: Bearer <token>
   "project_id": "a4c0e0e7-...",
   "task_type": "architecture",
   "status": "pending",
-  "params": {"project_id": "a4c0e0e7-..."},
+  "params": {
+    "project_id": "a4c0e0e7-...",
+    "user_guidance": "侧重群像，压缩世界观铺垫",
+    "current_content": "…当前版本架构全文…"
+  },
   "result": null,
   "progress": 0,
   "error_msg": null,

@@ -121,9 +121,23 @@ async def _invoke_with_retry(adapter, prompt: str, max_retries: int = 3) -> str:
     return ""
 
 
+def _current_content_section(current_content: str, asset_name: str) -> str:
+    """构造「参考当前版本」prompt 段；无当前内容时返回空串（不占 prompt）。"""
+    text = (current_content or "").strip()
+    if not text:
+        return ""
+    return (
+        f"【参考当前版本】\n"
+        f"以下是当前已有的{asset_name}全文，请基于它优化：保留其合理设定，"
+        f"针对作者要求调整，不要从零重写、不要丢失已有核心设定。\n\n"
+        f"{text}"
+    )
+
+
 async def generate_architecture(
     project: Project,
     user_guidance: str = "",
+    current_content: str = "",
     llm_config: dict | None = None,
 ) -> tuple[str, str]:
     """
@@ -137,6 +151,7 @@ async def generate_architecture(
 
     writing_context, creative_intent = _prompt_context_for_project(project)
     guidance = build_structure_guidance(_structure_for_project(project))
+    current_section = _current_content_section(current_content, "架构")
 
     # Step 1: Core seed
     prompt = core_seed_prompt.format(
@@ -147,6 +162,7 @@ async def generate_architecture(
         writing_context=writing_context,
         creative_intent=creative_intent,
         structure_seed_guidance=guidance["seed"],
+        current_content_section=current_section,
     )
     core_seed = await _invoke_with_retry(adapter, prompt)
     logger.info("Architecture step 1/5: Core seed generated")
@@ -158,6 +174,7 @@ async def generate_architecture(
         writing_context=writing_context,
         creative_intent=creative_intent,
         structure_character_guidance=guidance["character"],
+        current_content_section=current_section,
     )
     character_dynamics = await _invoke_with_retry(adapter, prompt)
     logger.info("Architecture step 2/5: Character dynamics generated")
@@ -169,6 +186,7 @@ async def generate_architecture(
         writing_context=writing_context,
         creative_intent=creative_intent,
         structure_world_guidance=guidance["world"],
+        current_content_section=current_section,
     )
     world_building = await _invoke_with_retry(adapter, prompt)
     logger.info("Architecture step 3/5: World building generated")
@@ -181,6 +199,7 @@ async def generate_architecture(
         world_building=world_building,
         writing_context=writing_context,
         creative_intent=creative_intent,
+        current_content_section=current_section,
     )
     plot_architecture = await _invoke_with_retry(adapter, prompt)
     logger.info("Architecture step 4/5: Plot architecture generated")
@@ -209,6 +228,7 @@ async def generate_directory(
     project: Project,
     architecture_text: str = "",
     user_guidance: str = "",
+    current_content: str = "",
     llm_config: dict | None = None,
 ) -> tuple[str, list[dict]]:
     """
@@ -222,6 +242,7 @@ async def generate_directory(
 
     writing_context, creative_intent = _prompt_context_for_project(project)
     guidance = build_structure_guidance(_structure_for_project(project))
+    current_section = _current_content_section(current_content, "目录")
 
     prompt = chapter_blueprint_prompt.format(
         user_guidance=user_guidance or "",
@@ -230,6 +251,7 @@ async def generate_directory(
         writing_context=writing_context,
         creative_intent=creative_intent,
         structure_blueprint_guidance=guidance["blueprint"],
+        current_content_section=current_section,
     )
     directory_text = await _invoke_with_retry(adapter, prompt)
     if not directory_text:

@@ -21,6 +21,8 @@ core_seed_prompt = """\
 
 {structure_seed_guidance}
 
+{current_content_section}
+
 仅返回故事核心文本，不要解释任何内容。
 """
 
@@ -29,6 +31,7 @@ character_dynamics_prompt = """\
 基于以下元素：
 - 内容指导：{user_guidance}
 - 核心种子：{core_seed}
+{current_content_section}
 
 【写作上下文】
 {writing_context}
@@ -58,6 +61,7 @@ world_building_prompt = """\
 基于以下元素：
 - 内容指导：{user_guidance}
 - 核心冲突："{core_seed}"
+{current_content_section}
 
 【写作上下文】
 {writing_context}
@@ -186,6 +190,7 @@ plot_architecture_prompt = """\
 - 核心种子：{core_seed}
 - 角色体系：{character_dynamics}
 - 世界观：{world_building}
+{current_content_section}
 
 【写作上下文】
 {writing_context}
@@ -305,6 +310,7 @@ chapter_blueprint_prompt = """\
 - 内容指导：{user_guidance}
 - 小说架构：
 {novel_architecture}
+{current_content_section}
 
 【写作上下文】
 {writing_context}

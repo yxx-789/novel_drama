@@ -133,6 +133,8 @@ def test_prompt_placeholders_all_formatable():
         "chapter_title", "chapter_summary", "previous_chapter_summary", "previous_chapter_excerpt",
         "chapter_number", "novel_architecture", "character_dynamics", "world_building",
         "plot_architecture",
+        # 「参考当前版本」段（V3 P2 优化重新生成，生成服务 format 时传入）
+        "current_content_section",
     }
     prompts = {
         "core_seed_prompt": core_seed_prompt,

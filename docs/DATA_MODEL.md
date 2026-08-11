@@ -136,6 +136,26 @@
 
 ---
 
+### asset_versions
+
+版本历史表（优化重新生成 + 回滚专项，Task 1）。仅 `architecture` / `directory` 两类资产写入（`VERSIONED_ASSET_TYPES`）；`generate`（AI 优化重新生成）/ `manual`（手动保存）/ `rollback`（回滚）三种触发来源。
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | UUID | PK | |
+| project_id | UUID | FK → projects.id, NOT NULL | |
+| asset_type | VARCHAR(50) | NOT NULL | 资产类型（architecture / directory） |
+| version | INTEGER | NOT NULL | 版本号（对应当时 project_assets.version） |
+| content_text | TEXT | NOT NULL | 该版本全文快照 |
+| trigger_type | VARCHAR(20) | NOT NULL, DEFAULT 'generate' | generate / manual / rollback |
+| guidance | TEXT | | 优化提示词（generate 原始 guidance，未拼接灵感） |
+| created_by | UUID | FK → users.id | 触发人 |
+| created_at | TIMESTAMPTZ | server_default=now() | |
+
+**唯一约束**：(project_id, asset_type, version)（`uq_asset_versions_project_type_version`）
+
+---
+
 ### tasks
 
 异步生成任务记录。
@@ -280,6 +300,7 @@ chat_sessions ||--o{ chat_messages : contains
 | 2026-05-09 | 添加 chat | chat_sessions / chat_messages |
 | 2026-05-10 | users 表新增 LLM 配置字段 | `llm_api_key_encrypted` / `llm_base_url` / `llm_model` / `llm_config_updated_at` |
 | 2026-08-06 | V3 P3-B 闭环 | `arc_summaries.book_summary` 由单章最后一章合成并闭环注入（伏笔提醒命中时）；`foreshadowing.known_by` 由写前【信息约束】消费（每章最近 5 条 + 提醒命中） |
+| 2026-08-11 | 优化重新生成 + 版本历史 | 新增 `asset_versions` 版本历史表（仅 architecture/directory 写入，trigger_type=generate/manual/rollback）；`project_assets.version` 作为当前版本号，回滚续 +1 |
 
 ### 扁平化设计决策（D005）
 

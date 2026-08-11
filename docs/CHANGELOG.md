@@ -2,6 +2,14 @@
 
 ## [未发布]
 
+### 优化重新生成：版本列表 / 回滚 API + 手动保存写历史（Task 6）
+
+- 新增 `GET /api/projects/{id}/assets/{type}/versions`：返回版本历史（`id` / `version` / `trigger_type` / `guidance` / `created_at`），按 version 倒序；仅 architecture/directory 有历史行（`ASSET_TYPES` 内其他类型返回空数组）
+- 新增 `POST /api/projects/{id}/assets/{type}/rollback`：body `{"version": N}`，目标版本不存在返回 404，`version` 非正整数返回 400；成功回写目标版本全文到当前资产（version 续 +1、追加 `trigger_type="rollback"` 历史行），响应为当前资产结构
+- `PUT /api/projects/{id}/assets/{type}`：对 `architecture` / `directory` 保存后追加 `trigger_type="manual"` 历史行（记录保存后的当前版本号）
+- 测试：`test_asset_versions.py` 新增 `TestVersionsRouter`（3 用例），全量 16 passed；`test_project_router.py` 回归 3 passed
+- 接口文档同步：`docs/API_SPEC.md` 内容编辑一节
+
 ### 优化重新生成：生成路由接收 guidance + 快照当前全文（Task 5）
 
 - `POST /api/projects/{id}/generate/architecture` 与 `.../generate/directory` 新增可选 body `{"guidance": "..."}`（优化提示词）；guidance 超过 2000 字返回 400，未传按空提示词处理

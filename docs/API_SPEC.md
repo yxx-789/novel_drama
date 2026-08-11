@@ -326,7 +326,9 @@ Authorization: Bearer <token>
 | 方法 | 路径 | 说明 | 状态 |
 |------|------|------|------|
 | GET | /projects/{id}/assets/{type} | 获取资产 | 已实现 |
-| PUT | /projects/{id}/assets/{type} | 更新资产 | 已实现 |
+| PUT | /projects/{id}/assets/{type} | 更新资产（architecture/directory 追加 trigger=manual 历史行） | 已实现 |
+| GET | /projects/{id}/assets/{type}/versions | 版本历史列表（按 version 倒序） | 已实现 |
+| POST | /projects/{id}/assets/{type}/rollback | 回滚到指定版本（body `{"version": N}`） | 已实现 |
 
 **请求/响应示例**
 
@@ -360,6 +362,48 @@ Authorization: Bearer <token>
   "content_json": {"world_rules": [...]}
 }
 ```
+
+> 对 `architecture` / `directory` 保存会追加一条 `trigger_type="manual"` 的版本历史行（version 取保存后当前版本号）。
+
+版本历史列表：
+```http
+GET /api/projects/{id}/assets/architecture/versions
+Authorization: Bearer <token>
+```
+
+响应（按 version 倒序）：
+```json
+[
+  {
+    "id": "...",
+    "version": 3,
+    "trigger_type": "manual",
+    "guidance": null,
+    "created_at": "2026-08-11T00:00:00Z"
+  },
+  {
+    "id": "...",
+    "version": 2,
+    "trigger_type": "generate",
+    "guidance": "侧重群像",
+    "created_at": "2026-08-11T00:00:00Z"
+  }
+]
+```
+
+回滚：
+```http
+POST /api/projects/{id}/assets/architecture/rollback
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "version": 2
+}
+```
+
+- `version` 必须为正整数；非数字 / 布尔 / < 1 返回 400。
+- 目标版本不存在返回 404；成功把该版本全文写回当前资产（version 续 +1，追加 `trigger_type="rollback"` 历史行），响应为当前资产结构（同 GET 资产）。
 
 **asset_type 枚举**：architecture, directory, characters, settings, drama_plan, world_state, arc_summaries, foreshadowing
 

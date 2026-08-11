@@ -343,3 +343,81 @@ class TestGenerateRouterGuidance:
         self._clear_overrides(client)
         assert res.status_code == 400, res.text
         assert "优化提示词" in res.json()["detail"]
+
+
+class TestVersionsRouter:
+    """版本列表 + 回滚端点。"""
+
+    _PID = "00000000-0000-0000-0000-000000000001"
+
+    def _make_client(self, db):
+        from fastapi.testclient import TestClient
+        from app.main import app
+        from app.infra.database import get_db
+        from app.routers.dependency import get_current_user
+        from app.models.user import User
+
+        async def _fake_get_db():
+            yield db
+
+        async def _fake_get_current_user():
+            u = User()
+            u.id = str(uuid.uuid4())
+            return u
+
+        app.dependency_overrides[get_db] = _fake_get_db
+        app.dependency_overrides[get_current_user] = _fake_get_current_user
+        return TestClient(app, raise_server_exceptions=False)
+
+    def _clear_overrides(self):
+        from app.main import app
+        app.dependency_overrides.clear()
+
+    def test_list_versions_returns_desc(self):
+        rows = [
+            SimpleNamespace(id="v1", version=2, trigger_type="generate", guidance="优化",
+                            created_at="2026-08-11T00:02:00+00:00"),
+            SimpleNamespace(id="v2", version=1, trigger_type="manual", guidance=None,
+                            created_at="2026-08-11T00:01:00+00:00"),
+        ]
+
+        class _RowsResult:
+            def scalars(self):
+                return SimpleNamespace(all=lambda: rows)
+
+        class _ExecuteDB(FakeDB):
+            async def execute(self, stmt):
+                return _RowsResult()
+
+        project = SimpleNamespace(id=self._PID)
+        client = self._make_client(_ExecuteDB())
+        with patch("app.routers.assets.get_project_by_id", return_value=project):
+            res = client.get(f"/api/projects/{self._PID}/assets/architecture/versions")
+        self._clear_overrides()
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert [b["version"] for b in body] == [2, 1]
+        assert body[0]["trigger_type"] == "generate"
+
+    def test_rollback_returns_404_when_missing(self):
+        project = SimpleNamespace(id=self._PID)
+        client = self._make_client(FakeDB(results=[]))
+        with patch("app.routers.assets.get_project_by_id", return_value=project), \
+             patch("app.routers.assets.rollback_asset", return_value=False):
+            res = client.post(
+                f"/api/projects/{self._PID}/assets/architecture/rollback",
+                json={"version": 99},
+            )
+        self._clear_overrides()
+        assert res.status_code == 404, res.text
+
+    def test_rollback_invalid_version_returns_400(self):
+        project = SimpleNamespace(id=self._PID)
+        client = self._make_client(FakeDB(results=[]))
+        with patch("app.routers.assets.get_project_by_id", return_value=project):
+            res = client.post(
+                f"/api/projects/{self._PID}/assets/architecture/rollback",
+                json={"version": "abc"},
+            )
+        self._clear_overrides()
+        assert res.status_code == 400, res.text

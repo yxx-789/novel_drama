@@ -17,6 +17,17 @@ Phase 1: 最小业务闭环 —— 项目 API（已完成）
 
 ## 已完成事项
 
+### 优化重新生成 + 版本历史专项（2026-08-11，Task 6 完成）
+
+- [x] Task 1：`asset_versions` 表（模型 + 迁移 + 存量回填 v1）
+- [x] Task 2：架构/目录生成注入「参考当前版本」prompt 段（`current_content`）
+- [x] Task 3：版本写入 / 回滚 service（`record_asset_version` / `rollback_asset`，仅 architecture/directory）
+- [x] Task 4：worker 接线（读取 `task.params.current_content`、记录原始 guidance，未拼接灵感）
+- [x] Task 5：生成路由接收 `guidance` 并快照当前全文
+- [x] Task 6：版本 API + 手动保存写历史——`GET .../assets/{type}/versions`（倒序）、`POST .../assets/{type}/rollback`（目标不存在 404 / version 非法 400）、`PUT .../assets/{type}` 对 architecture/directory 追加 trigger=manual 历史行
+- [x] 测试：`test_asset_versions.py` 全量 16 passed（新增 `TestVersionsRouter` 3 用例）；`test_project_router.py` 回归 3 passed
+- [ ] 前端版本历史 UI（后续专项，尚未排期）
+
 ### V3 P2-B：角色卡系统（2026-08-06）
 
 - [x] `character_card_update_prompt`：角色卡 JSON 更新 prompt（兼容旧版文本角色状态输入）

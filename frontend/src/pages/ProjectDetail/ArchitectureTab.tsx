@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { ProgressBar, getTaskStepLabel } from './utils'
 import MarkdownPreview from '../../components/MarkdownPreview'
+import GuidancePanel from '../../components/GuidancePanel'
+import VersionHistory from '../../components/VersionHistory'
 
 interface ArchitectureTabProps {
   value: string
@@ -10,8 +12,10 @@ interface ArchitectureTabProps {
   saving: boolean
   generating: boolean
   activeTask: { id: string; type: string; progress: number; status: string } | null
+  projectId: string
+  currentVersion: number
   onSave: () => void
-  onGenerate: () => void
+  onGenerate: (guidance?: string) => void
   onExport: () => void
 }
 
@@ -29,6 +33,8 @@ export default function ArchitectureTab({
   saving,
   generating,
   activeTask,
+  projectId,
+  currentVersion,
   onSave,
   onGenerate,
   onExport,
@@ -149,12 +155,23 @@ export default function ArchitectureTab({
             导出 MD
           </button>
           <button
-            onClick={onGenerate}
+            onClick={() => onGenerate()}
             disabled={generating}
             className="btn-primary disabled:opacity-50 disabled:hover:translate-y-0"
           >
-            {generating ? '生成中...' : 'AI 生成架构'}
+            {generating ? '生成中...' : value.trim() ? '基于当前架构优化生成' : 'AI 生成架构'}
           </button>
+          <GuidancePanel
+            assetName="架构"
+            generating={generating}
+            onGenerateWithGuidance={(g) => onGenerate(g)}
+          />
+          <VersionHistory
+            projectId={projectId}
+            assetType="architecture"
+            assetName="架构"
+            currentVersion={currentVersion}
+          />
         </div>
       </div>
 

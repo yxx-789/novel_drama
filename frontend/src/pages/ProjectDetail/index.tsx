@@ -310,11 +310,11 @@ function ProjectDetail() {
     )
   }
 
-  const handleGenerateArchitecture = async () => {
+  const handleGenerateArchitecture = async (guidance?: string) => {
     if (!id) return
     setArchitectureGenerating(true)
     try {
-      const task = await generateArchitecture(id)
+      const task = await generateArchitecture(id, guidance)
       setError('')
       setActiveTask({ id: task.id, type: 'architecture', progress: 0, status: 'pending' })
       pollCleanupRef.current?.()
@@ -342,11 +342,11 @@ function ProjectDetail() {
     }
   }
 
-  const handleGenerateDirectory = async () => {
+  const handleGenerateDirectory = async (guidance?: string) => {
     if (!id) return
     setDirectoryGenerating(true)
     try {
-      const task = await generateDirectory(id)
+      const task = await generateDirectory(id, guidance)
       setError('')
       setActiveTask({ id: task.id, type: 'directory', progress: 0, status: 'pending' })
       pollCleanupRef.current?.()
@@ -852,6 +852,8 @@ function ProjectDetail() {
             saving={architectureSaving}
             generating={architectureGenerating}
             activeTask={activeTask}
+            projectId={project!.id}
+            currentVersion={architecture?.version ?? 0}
             onSave={handleSaveArchitecture}
             onGenerate={handleGenerateArchitecture}
             onExport={() => handleExportAsset('architecture')}
@@ -866,6 +868,8 @@ function ProjectDetail() {
             saving={directorySaving}
             generating={directoryGenerating}
             activeTask={activeTask}
+            projectId={project!.id}
+            currentVersion={directory?.version ?? 0}
             onSave={handleSaveDirectory}
             onGenerate={handleGenerateDirectory}
             onExport={() => handleExportAsset('directory')}

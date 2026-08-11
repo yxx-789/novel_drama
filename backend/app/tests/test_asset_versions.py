@@ -221,17 +221,20 @@ class TestWorkerWiring:
         )
         mock_proj.return_value = project
         mock_llm.return_value = {"api_key": "k"}
-        mock_insp.return_value = None
+        mock_insp.return_value = "灵感内容"
         mock_gen.return_value = ("新架构", "新角色")
         db = FakeDB(results=[task])
         with patch("app.services.task_service.AsyncSessionLocal", return_value=db):
             _run(run_architecture_task("t1"))
         _, kwargs = mock_gen.call_args
         assert kwargs["current_content"] == "现有架构"
-        # _save_asset 以原始 guidance（未拼接灵感）写历史
+        # 灵感注入仍生效：传给生成函数的 user_guidance 含灵感参考
+        assert "灵感内容" in kwargs["user_guidance"]
+        # 版本历史记录原始 guidance（未拼接灵感），不含【创作灵感参考】段
         # 注：call_args 是最后一次调用（characters 保存，无 kwargs），须按 asset_type 定位 architecture 调用
         arch_save = next(c for c in mock_save.call_args_list if c.args[2] == "architecture")
         assert arch_save.kwargs["guidance"] == "侧重人物"
+        assert "【创作灵感参考】" not in arch_save.kwargs["guidance"]
 
     @patch("app.services.task_service.generate_directory")
     @patch("app.services.task_service.get_project_by_id")
@@ -250,11 +253,16 @@ class TestWorkerWiring:
         )
         mock_proj.return_value = project
         mock_llm.return_value = {"api_key": "k"}
-        mock_insp.return_value = None
-        mock_gen.return_value = ("新目录", [{"chapter_number": 1}])
+        mock_insp.return_value = "灵感内容"
+        mock_gen.return_value = ("新目录", [{"chapter_number": 1, "chapter_title": "第1章", "chapter_summary": ""}])
         db = FakeDB(results=[task])
         with patch("app.services.task_service.AsyncSessionLocal", return_value=db):
             _run(run_directory_task("t1"))
         _, kwargs = mock_gen.call_args
         assert kwargs["current_content"] == "现有目录"
-        assert mock_save.call_args.kwargs["guidance"] == "节奏加快"
+        # 灵感注入仍生效
+        assert "灵感内容" in kwargs["user_guidance"]
+        # 版本历史记录原始 guidance（未拼接灵感）；按 asset_type 定位 directory 调用
+        dir_save = next(c for c in mock_save.call_args_list if c.args[2] == "directory")
+        assert dir_save.kwargs["guidance"] == "节奏加快"
+        assert "【创作灵感参考】" not in dir_save.kwargs["guidance"]

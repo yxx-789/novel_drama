@@ -54,6 +54,22 @@ class ProjectAsset(Base, UUIDMixin, TimestampMixin):
     project: Mapped["Project"] = relationship("Project", back_populates="assets")
 
 
+class AssetVersion(Base, UUIDMixin, TimestampMixin):
+    __tablename__ = "asset_versions"
+
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    asset_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_text: Mapped[str] = mapped_column(Text, nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String(20), nullable=False, default="generate")
+    guidance: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+
+    __table_args__ = (
+        {"sqlite_autoincrement": True},
+    )
+
+
 class Task(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "tasks"
 

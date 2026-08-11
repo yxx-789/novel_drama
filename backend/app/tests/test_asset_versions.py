@@ -81,3 +81,115 @@ class TestCurrentContentInjection:
         mock_adapter.return_value = adapter
         _run(generate_directory(_project(), architecture_text="架构", llm_config=_LLM))
         assert "参考当前版本" not in adapter.prompts[0]
+
+
+class _FakeResult:
+    def __init__(self, row):
+        self.row = row
+
+    def scalar_one_or_none(self):
+        return self.row
+
+
+class FakeDB:
+    """按查询顺序返回预设行的最小 AsyncSession 替身。
+
+    results: 每次 execute 依次 pop 返回；耗尽后返回 None。
+    versions: record_asset_version 写入的行参数（供断言）。
+    """
+
+    def __init__(self, results=None):
+        self.results = list(results or [])
+        self.versions = []
+        self.committed = False
+
+    async def execute(self, stmt):
+        return _FakeResult(self.results.pop(0) if self.results else None)
+
+    def add(self, obj):
+        # brief 原文为 pass，导致 db.versions 永远为空、所有断言失败；
+        # 按 docstring 语义（versions 供断言 record_asset_version 写入的行参数）捕获 AssetVersion。
+        if hasattr(obj, "trigger_type"):
+            self.versions.append({
+                "project_id": obj.project_id,
+                "asset_type": obj.asset_type,
+                "content_text": obj.content_text,
+                "version": obj.version,
+                "trigger_type": obj.trigger_type,
+                "guidance": obj.guidance,
+                "created_by": obj.created_by,
+            })
+
+    async def commit(self):
+        self.committed = True
+
+    async def refresh(self, obj):
+        if getattr(obj, "id", None) is None:
+            obj.id = "test-id"
+        if getattr(obj, "version", None) is None:
+            obj.version = 1
+        if getattr(obj, "created_at", None) is None:
+            obj.created_at = "2026-08-11T00:00:00+00:00"
+        if getattr(obj, "updated_at", None) is None:
+            obj.updated_at = "2026-08-11T00:00:00+00:00"
+
+
+class TestSaveAssetWritesVersion:
+    """_save_asset 对 architecture/directory 写历史行且 version 递增；其他类型不写。"""
+
+    def test_architecture_writes_version_row(self):
+        from app.services.task_service import _save_asset
+
+        existing = SimpleNamespace(content_text="旧", version=2)
+        db = FakeDB(results=[existing])
+        _run(_save_asset(db, "p1", "architecture", "新内容", trigger_type="generate", guidance="提示词"))
+        assert existing.content_text == "新内容"
+        assert existing.version == 3
+        assert db.versions == [{
+            "project_id": "p1", "asset_type": "architecture", "content_text": "新内容",
+            "version": 3, "trigger_type": "generate", "guidance": "提示词", "created_by": None,
+        }]
+
+    def test_directory_writes_manual_version_row(self):
+        from app.services.task_service import _save_asset
+
+        existing = SimpleNamespace(content_text="旧", version=1)
+        db = FakeDB(results=[existing])
+        _run(_save_asset(db, "p1", "directory", "新目录", trigger_type="manual", guidance=None))
+        assert db.versions[0]["trigger_type"] == "manual"
+
+    def test_world_state_does_not_write_version_row(self):
+        from app.services.task_service import _save_asset
+
+        existing = SimpleNamespace(content_text="{}", version=5)
+        db = FakeDB(results=[existing])
+        _run(_save_asset(db, "p1", "world_state", "{}", trigger_type="generate"))
+        assert db.versions == []
+        assert existing.version == 6
+
+
+class TestRollbackAsset:
+    """rollback_asset 写回内容、version 续 +1、写 rollback 行；目标不存在返回 False。"""
+
+    def test_rollback_success(self):
+        from app.services.task_service import rollback_asset
+
+        target = SimpleNamespace(content_text="v2 的内容")
+        current = SimpleNamespace(content_text="v3 的内容", version=3)
+        db = FakeDB(results=[target, current])
+        ok = _run(rollback_asset(db, "p1", "architecture", 2, user_id="u1"))
+        assert ok is True
+        assert current.content_text == "v2 的内容"
+        assert current.version == 4
+        assert db.versions == [{
+            "project_id": "p1", "asset_type": "architecture", "content_text": "v2 的内容",
+            "version": 4, "trigger_type": "rollback", "guidance": "回滚至 v2", "created_by": "u1",
+        }]
+
+    def test_rollback_target_missing_returns_false(self):
+        from app.services.task_service import rollback_asset
+
+        db = FakeDB(results=[None])
+        ok = _run(rollback_asset(db, "p1", "architecture", 99))
+        assert ok is False
+        assert db.versions == []

@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infra.database import AsyncSessionLocal
-from app.models.project import Project, ProjectAsset, Task
+from app.models.project import AssetVersion, Project, ProjectAsset, Task
 from app.services.drama_service import generate_drama_outline, generate_drama_script
 from app.services.generation_service import (
     _structure_for_project,
@@ -97,7 +97,43 @@ async def update_task_status(
     return task
 
 
-async def _save_asset(db: AsyncSession, project_id: str, asset_type: str, content_text: str) -> None:
+VERSIONED_ASSET_TYPES = ("architecture", "directory")
+
+
+async def record_asset_version(
+    db: AsyncSession,
+    project_id: str,
+    asset_type: str,
+    content_text: str,
+    version: int,
+    trigger_type: str = "generate",
+    guidance: str | None = None,
+    created_by: str | None = None,
+) -> None:
+    """把一次写入记入 asset_versions 历史表（仅 architecture/directory）。"""
+    if asset_type not in VERSIONED_ASSET_TYPES:
+        return
+    db.add(AssetVersion(
+        project_id=project_id,
+        asset_type=asset_type,
+        content_text=content_text,
+        version=version,
+        trigger_type=trigger_type,
+        guidance=guidance,
+        created_by=created_by,
+    ))
+    await db.commit()
+
+
+async def _save_asset(
+    db: AsyncSession,
+    project_id: str,
+    asset_type: str,
+    content_text: str,
+    trigger_type: str = "generate",
+    guidance: str | None = None,
+    created_by: str | None = None,
+) -> None:
     result = await db.execute(
         select(ProjectAsset).where(
             ProjectAsset.project_id == project_id,
@@ -108,14 +144,83 @@ async def _save_asset(db: AsyncSession, project_id: str, asset_type: str, conten
     if asset:
         asset.content_text = content_text
         asset.version += 1
+        asset.updated_by = created_by
     else:
         asset = ProjectAsset(
             project_id=project_id,
             asset_type=asset_type,
             content_text=content_text,
+            version=1,
+            updated_by=created_by,
         )
         db.add(asset)
     await db.commit()
+    await db.refresh(asset)
+    if asset_type in VERSIONED_ASSET_TYPES:
+        await record_asset_version(
+            db,
+            project_id,
+            asset_type,
+            content_text,
+            version=asset.version,
+            trigger_type=trigger_type,
+            guidance=guidance,
+            created_by=created_by,
+        )
+
+
+async def rollback_asset(
+    db: AsyncSession,
+    project_id: str,
+    asset_type: str,
+    version: int,
+    user_id: str | None = None,
+) -> bool:
+    """把指定历史版本写回当前 asset；成功返回 True，目标版本不存在返回 False。"""
+    result = await db.execute(
+        select(AssetVersion).where(
+            AssetVersion.project_id == project_id,
+            AssetVersion.asset_type == asset_type,
+            AssetVersion.version == version,
+        )
+    )
+    target = result.scalar_one_or_none()
+    if not target:
+        return False
+
+    result = await db.execute(
+        select(ProjectAsset).where(
+            ProjectAsset.project_id == project_id,
+            ProjectAsset.asset_type == asset_type,
+        )
+    )
+    asset = result.scalar_one_or_none()
+    if asset:
+        asset.content_text = target.content_text
+        asset.version += 1
+        asset.updated_by = user_id
+    else:
+        asset = ProjectAsset(
+            project_id=project_id,
+            asset_type=asset_type,
+            content_text=target.content_text,
+            version=1,
+            updated_by=user_id,
+        )
+        db.add(asset)
+    await db.commit()
+    await db.refresh(asset)
+    await record_asset_version(
+        db,
+        project_id,
+        asset_type,
+        target.content_text,
+        version=asset.version,
+        trigger_type="rollback",
+        guidance=f"回滚至 v{version}",
+        created_by=user_id,
+    )
+    return True
 
 
 async def run_architecture_task(task_id: uuid.UUID) -> None:

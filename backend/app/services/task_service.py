@@ -110,7 +110,11 @@ async def record_asset_version(
     guidance: str | None = None,
     created_by: str | None = None,
 ) -> None:
-    """把一次写入记入 asset_versions 历史表（仅 architecture/directory）。"""
+    """把一次写入记入 asset_versions 历史表（仅 architecture/directory）。
+
+    只 add 不 commit：由调用者与资产写入放在同一个事务内一起提交，
+    避免「资产已更新但历史行未落库」的半写窗口。
+    """
     if asset_type not in VERSIONED_ASSET_TYPES:
         return
     db.add(AssetVersion(
@@ -122,7 +126,6 @@ async def record_asset_version(
         guidance=guidance,
         created_by=created_by,
     ))
-    await db.commit()
 
 
 async def _save_asset(
@@ -154,8 +157,6 @@ async def _save_asset(
             updated_by=created_by,
         )
         db.add(asset)
-    await db.commit()
-    await db.refresh(asset)
     if asset_type in VERSIONED_ASSET_TYPES:
         await record_asset_version(
             db,
@@ -167,6 +168,8 @@ async def _save_asset(
             guidance=guidance,
             created_by=created_by,
         )
+    await db.commit()
+    await db.refresh(asset)
 
 
 async def rollback_asset(
@@ -208,8 +211,6 @@ async def rollback_asset(
             updated_by=user_id,
         )
         db.add(asset)
-    await db.commit()
-    await db.refresh(asset)
     await record_asset_version(
         db,
         project_id,
@@ -220,6 +221,8 @@ async def rollback_asset(
         guidance=f"回滚至 v{version}",
         created_by=user_id,
     )
+    await db.commit()
+    await db.refresh(asset)
     return True
 
 

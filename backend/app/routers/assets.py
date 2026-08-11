@@ -196,12 +196,11 @@ async def upsert_asset(
             asset_type=asset_type,
             content_text=content_text,
             content_json=content_json,
+            version=1,
             updated_by=str(current_user.id),
         )
         db.add(asset)
 
-    await db.commit()
-    await db.refresh(asset)
     if asset_type in ("architecture", "directory"):
         await record_asset_version(
             db,
@@ -213,6 +212,8 @@ async def upsert_asset(
             guidance=None,
             created_by=str(current_user.id),
         )
+    await db.commit()
+    await db.refresh(asset)
     return {
         "id": asset.id,
         "project_id": asset.project_id,

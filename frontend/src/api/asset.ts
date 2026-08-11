@@ -36,3 +36,21 @@ export const exportAsset = async (
   })
   return response.data
 }
+
+export interface AssetVersion {
+  id: string
+  version: number
+  trigger_type: 'generate' | 'manual' | 'rollback'
+  guidance: string | null
+  created_at: string
+}
+
+export const getAssetVersions = async (projectId: string, assetType: string): Promise<AssetVersion[]> => {
+  const response = await apiClient.get<AssetVersion[]>(`/api/projects/${projectId}/assets/${assetType}/versions`)
+  return response.data
+}
+
+export const rollbackAsset = async (projectId: string, assetType: string, version: number): Promise<Asset> => {
+  const response = await apiClient.post<Asset>(`/api/projects/${projectId}/assets/${assetType}/rollback`, { version })
+  return response.data
+}

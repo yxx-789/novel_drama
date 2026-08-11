@@ -1,13 +1,19 @@
 import apiClient from './client'
 import type { Task } from './task'
 
-export const generateArchitecture = async (projectId: string): Promise<Task> => {
-  const response = await apiClient.post<Task>(`/api/projects/${projectId}/generate/architecture`)
+export const generateArchitecture = async (projectId: string, guidance?: string): Promise<Task> => {
+  const response = await apiClient.post<Task>(
+    `/api/projects/${projectId}/generate/architecture`,
+    guidance ? { guidance } : undefined
+  )
   return response.data
 }
 
-export const generateDirectory = async (projectId: string): Promise<Task> => {
-  const response = await apiClient.post<Task>(`/api/projects/${projectId}/generate/directory`)
+export const generateDirectory = async (projectId: string, guidance?: string): Promise<Task> => {
+  const response = await apiClient.post<Task>(
+    `/api/projects/${projectId}/generate/directory`,
+    guidance ? { guidance } : undefined
+  )
   return response.data
 }
 

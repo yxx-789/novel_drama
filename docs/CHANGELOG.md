@@ -2,6 +2,13 @@
 
 ## [未发布]
 
+### 优化重新生成：前端版本历史 + 优化提示词组件（Task 7-9）
+
+- 新增 `frontend/src/components/GuidancePanel.tsx`：「优化提示词」面板（textarea + 「带提示词生成{资产}」按钮），提交时提示将基于当前资产全文 + 提示词重新生成
+- 新增 `frontend/src/components/VersionHistory.tsx`：版本历史列表（v 号 + 触发来源徽标 generate/manual/rollback + 相对时间 + guidance 摘要），当前版本标「当前」，非当前版本可「回滚到此版本」（二次确认后调用回滚 API，成功后刷新资产与版本列表）
+- 架构 / 目录 Tab 接线：`ArchitectureTab.tsx` / `DirectoryTab.tsx` 新增「优化提示词」与「版本历史」入口；主生成按钮文案随内容有无切换（「AI 生成架构」↔「基于当前架构优化生成」/「AI 生成目录」↔「基于当前目录优化生成」）
+- `frontend/src/api/asset.ts` 新增 `AssetVersion` 类型 + `getAssetVersions` / `rollbackAsset`
+
 ### 优化重新生成：版本列表 / 回滚 API + 手动保存写历史（Task 6）
 
 - 新增 `GET /api/projects/{id}/assets/{type}/versions`：返回版本历史（`id` / `version` / `trigger_type` / `guidance` / `created_at`），按 version 倒序；仅 architecture/directory 有历史行（`ASSET_TYPES` 内其他类型返回空数组）
@@ -15,6 +22,13 @@
 - `POST /api/projects/{id}/generate/architecture` 与 `.../generate/directory` 新增可选 body `{"guidance": "..."}`（优化提示词）；guidance 超过 2000 字返回 400，未传按空提示词处理
 - 提交时服务端从资产表取当前版本全文快照，连同 guidance 写入 `task.params.user_guidance` / `task.params.current_content`，供 worker 做优化重新生成与版本历史记录（前序 Task 1-4 已实现 asset_versions 表、prompt 注入、版本写入 service、worker 接线）
 - 测试：`test_asset_versions.py` 新增 `TestGenerateRouterGuidance`（2 用例），全量 13 passed；`test_project_router.py` 回归 3 passed
+
+### 优化重新生成：asset_versions 表 + 版本写入/回滚 service + 提示词注入（Task 1-4）
+
+- 新增 `asset_versions` 表（Alembic migration `a1b2c3d4e5f6`，仅 architecture/directory 写入）：`project_id` / `asset_type` / `version` / `content_text`（该版本全文快照）/ `trigger_type`（generate / manual / rollback）/ `guidance` / `created_by` / `created_at` / `updated_at`；唯一约束 `(project_id, asset_type, version)`；迁移回填存量 architecture/directory 内容为 v1（trigger=manual）
+- `task_service.record_asset_version` 统一版本写入：generate 写新版本、manual 保存追加历史、rollback 回写目标版本全文并续 +1 且追加 rollback 历史行
+- 提示词注入「参考当前版本」：`generation_service._current_content_section` 在生成架构/目录时注入【参考当前版本】段（无当前内容时返回空串、不占 token），要求基于现有全文优化、不丢失已有核心设定
+- worker 接线：生成任务读取 `task.params.user_guidance` / `current_content`，`raw_guidance` 取未拼接灵感的原始提示词写入版本历史 guidance 字段
 
 ### 修复：「角色与世界」Tab 变更历史全显示 `- → -`
 

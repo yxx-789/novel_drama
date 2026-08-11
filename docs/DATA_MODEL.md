@@ -151,6 +151,7 @@
 | guidance | TEXT | | 优化提示词（generate 原始 guidance，未拼接灵感） |
 | created_by | UUID | FK → users.id | 触发人 |
 | created_at | TIMESTAMPTZ | server_default=now() | |
+| updated_at | TIMESTAMPTZ | server_default=now() | |
 
 **唯一约束**：(project_id, asset_type, version)（`uq_asset_versions_project_type_version`）
 

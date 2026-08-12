@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """story_shape / total_chapters_target 数据模型测试。"""
-import pytest
-from sqlalchemy import Column, Integer, String, inspect
+from sqlalchemy import inspect
 
 from app.models.project import Project
 

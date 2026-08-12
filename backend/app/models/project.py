@@ -14,7 +14,7 @@ class Project(Base, UUIDMixin, TimestampMixin):
     genre: Mapped[str | None] = mapped_column(String(100))
     num_chapters: Mapped[int] = mapped_column(Integer, default=0)
     word_number: Mapped[int] = mapped_column(Integer, default=0)
-    story_shape: Mapped[str] = mapped_column(String(20), nullable=False)
+    story_shape: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
     total_chapters_target: Mapped[int | None] = mapped_column(Integer, nullable=True)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="draft")

@@ -355,6 +355,122 @@ class TestGenerateRouterGuidance:
         assert "优化提示词" in res.json()["detail"]
 
 
+class TestContinueWritingRouter:
+    """续写路由：前置校验 400/422 + 任务下发。
+
+    与既有路由测试（TestGenerateRouterGuidance）保持同一模式：
+    路径用合法 UUID（路由签名 project_id: uuid.UUID，用 "p1" 会在路径校验处 422）。
+    """
+
+    _PID = "11111111-1111-1111-1111-111111111111"
+
+    def _make_client(self, fake_db):
+        import pytest
+        from fastapi.testclient import TestClient
+        from app.main import app
+        from app.infra.database import get_db
+        from app.routers.dependency import get_current_user
+        from app.models.user import User
+
+        async def _fake_get_db():
+            yield fake_db
+
+        async def _fake_get_current_user():
+            u = User()
+            u.id = str(uuid.uuid4())
+            return u
+
+        app.dependency_overrides[get_db] = _fake_get_db
+        app.dependency_overrides[get_current_user] = _fake_get_current_user
+        client = TestClient(app, raise_server_exceptions=False)
+        return client
+
+    def _clear(self, client):
+        from app.main import app
+        app.dependency_overrides.clear()
+
+    def _task_return(self, chapters):
+        # response_model=TaskOut 需要全部字段且 id 为合法 UUID
+        return SimpleNamespace(
+            id=self._PID,
+            project_id=self._PID,
+            task_type="continue_writing",
+            status="pending",
+            params={"project_id": self._PID, "chapters": chapters},
+            result=None,
+            progress=0,
+            error_msg=None,
+            created_at="2026-08-11T00:00:00+00:00",
+            updated_at="2026-08-11T00:00:00+00:00",
+        )
+
+    @patch("app.routers.generate.run_continue_writing")
+    @patch("app.routers.generate.create_task")
+    def test_continue_router_ok(self, mock_create, mock_delay):
+        project = SimpleNamespace(
+            id=self._PID, owner_id="u1", story_shape="open", total_chapters_target=30,
+            num_chapters=20, topic="t", genre="g", word_number=1500, writing_config=None,
+        )
+        with patch("app.routers.generate.get_project_by_id", return_value=project):
+            mock_create.return_value = self._task_return(5)
+            db = FakeDB()
+            client = self._make_client(db)
+            try:
+                res = client.post(f"/api/projects/{self._PID}/generate/continue-writing", json={"chapters": 5})
+            finally:
+                self._clear(client)
+        assert res.status_code == 200, res.text
+        args, kwargs = mock_create.call_args
+        assert args[2] == "continue_writing"
+        assert kwargs["params"]["chapters"] == 5
+        mock_delay.delay.assert_called_once_with(self._PID)
+
+    def test_continue_router_rejects_final_shape(self):
+        project = SimpleNamespace(
+            id=self._PID, owner_id="u1", story_shape="final", total_chapters_target=None,
+            num_chapters=20, topic="t", genre="g", word_number=1500, writing_config=None,
+        )
+        with patch("app.routers.generate.get_project_by_id", return_value=project), \
+             patch("app.routers.generate.run_continue_writing"):
+            db = FakeDB()
+            client = self._make_client(db)
+            try:
+                res = client.post(f"/api/projects/{self._PID}/generate/continue-writing", json={"chapters": 5})
+            finally:
+                self._clear(client)
+        assert res.status_code == 400, res.text
+
+    def test_continue_router_rejects_exceeding_target(self):
+        project = SimpleNamespace(
+            id=self._PID, owner_id="u1", story_shape="open", total_chapters_target=30,
+            num_chapters=28, topic="t", genre="g", word_number=1500, writing_config=None,
+        )
+        with patch("app.routers.generate.get_project_by_id", return_value=project), \
+             patch("app.routers.generate.run_continue_writing"):
+            db = FakeDB()
+            client = self._make_client(db)
+            try:
+                res = client.post(f"/api/projects/{self._PID}/generate/continue-writing", json={"chapters": 5})
+            finally:
+                self._clear(client)
+        assert res.status_code == 422, res.text
+
+    def test_continue_router_rejects_invalid_k(self):
+        project = SimpleNamespace(
+            id=self._PID, owner_id="u1", story_shape="open", total_chapters_target=30,
+            num_chapters=20, topic="t", genre="g", word_number=1500, writing_config=None,
+        )
+        with patch("app.routers.generate.get_project_by_id", return_value=project), \
+             patch("app.routers.generate.run_continue_writing"):
+            db = FakeDB()
+            client = self._make_client(db)
+            try:
+                res = client.post(f"/api/projects/{self._PID}/generate/continue-writing", json={"chapters": 0})
+            finally:
+                self._clear(client)
+        assert res.status_code == 422, res.text
+
+
 class TestVersionsRouter:
     """版本列表 + 回滚端点。"""
 

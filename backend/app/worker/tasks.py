@@ -8,6 +8,7 @@ from app.services.task_service import (
     run_architecture_task,
     run_batch_chapters_task,
     run_chapter_task,
+    run_continue_writing_task,
     run_directory_task,
     run_drama_batch_task,
     run_drama_episode_task,
@@ -74,4 +75,11 @@ def run_drama_episode(self, task_id: str):
 def run_drama_batch(self, task_id: str):
     logger.info(f"Celery task [drama_batch] started for task_id={task_id}")
     asyncio.run(_run_with_cleanup(run_drama_batch_task(uuid.UUID(task_id))))
+    return {"status": "success"}
+
+
+@celery_app.task(bind=True)
+def run_continue_writing(self, task_id: str):
+    logger.info(f"Celery task [continue_writing] started for task_id={task_id}")
+    asyncio.run(_run_with_cleanup(run_continue_writing_task(uuid.UUID(task_id))))
     return {"status": "success"}

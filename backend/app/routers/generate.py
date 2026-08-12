@@ -15,6 +15,7 @@ from app.worker.tasks import (
     run_architecture,
     run_batch_chapters,
     run_chapter,
+    run_continue_writing,
     run_directory,
     run_drama_batch,
     run_drama_episode,
@@ -176,4 +177,36 @@ async def trigger_drama_batch_generation(
         db, project_id, "drama_batch", params={"project_id": str(project_id)}
     )
     run_drama_batch.delay(str(task.id))
+    return task
+
+
+@router.post("/projects/{project_id}/generate/continue-writing", response_model=TaskOut)
+async def trigger_continue_writing_generation(
+    project_id: uuid.UUID,
+    payload: dict = {},
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    project = await get_project_by_id(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在或无权限访问")
+    if project.story_shape != "open":
+        raise HTTPException(status_code=400, detail="仅连载开篇（open）形态项目可续写")
+    try:
+        k = int(payload.get("chapters", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="续写章数必须为正整数")
+    if k < 1:
+        raise HTTPException(status_code=422, detail="续写章数必须为正整数")
+    m = project.total_chapters_target
+    if m and project.num_chapters + k > m:
+        raise HTTPException(
+            status_code=422,
+            detail=f"续写后总章数不能超过全书目标 {m} 章（剩余 {m - project.num_chapters} 章）",
+        )
+    task = await create_task(
+        db, project_id, "continue_writing",
+        params={"project_id": str(project_id), "chapters": k},
+    )
+    run_continue_writing.delay(str(task.id))
     return task

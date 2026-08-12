@@ -13,7 +13,7 @@
   - `run_continue_writing_task` 三步串行：① 更新 `num_chapters`（+k）→ ② `generate_directory_append` 追加目录（只生成 N+1 ~ N+k 章，`_ensure_chapters(skip_existing=True)` 不覆盖已有定稿，章节范围硬校验后落库，写入版本历史 trigger=generate/guidance=continue_writing）→ ③ `_batch_generate_drafts` 增量正文
   - **批量正文增量语义**：已有 `draft` 的章节自动跳过，只补生成缺失草稿的新章节；续写与既有批量生成共用该语义
   - 架构/目录生成按 `story_shape` 注入形态指令：`_scope_statement`（章节范围声明）/ `_architecture_shape_instruction`（final 收束结局、open 阶段收束）/ `_directory_shape_instruction`（第 N 章为结局章或阶段收束章）
-  - 前端：创建表单形态单选（open 展开 M 输入 + 锁定提示）、设置页形态可改（M 只读锁定）、目录 Tab 续写入口（弹窗 k 校验 + 轮询）；`frontend/src/api/project.ts` 新增 `generateContinueWriting`
+  - 前端：创建表单形态单选（open 展开 M 输入 + 锁定提示）、设置页形态可改（M 只读锁定）、目录 Tab 续写入口（弹窗 k 校验 + 轮询）；`frontend/src/api/generate.ts` 新增 `generateContinueWriting`
 
 ### 优化重新生成：前端版本历史 + 优化提示词组件（Task 7-9）
 

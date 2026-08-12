@@ -97,6 +97,8 @@ function ProjectDetail() {
   const [genre, setGenre] = useState('')
   const [numChapters, setNumChapters] = useState(0)
   const [wordNumber, setWordNumber] = useState(0)
+  const [storyShape, setStoryShape] = useState<string>('final')
+  const [totalChaptersTarget, setTotalChaptersTarget] = useState<number | null>(null)
 
   // Architecture state
   const [architectureText, setArchitectureText] = useState('')
@@ -148,6 +150,8 @@ function ProjectDetail() {
       setGenre(project.genre || '')
       setNumChapters(project.num_chapters)
       setWordNumber(project.word_number)
+      setStoryShape(project.story_shape || 'final')
+      setTotalChaptersTarget(project.total_chapters_target ?? null)
     }
   }, [project, dirty])
 
@@ -261,6 +265,8 @@ function ProjectDetail() {
         genre: genre || undefined,
         num_chapters: numChapters,
         word_number: wordNumber,
+        story_shape: storyShape,
+        total_chapters_target: storyShape === 'open' ? totalChaptersTarget : undefined,
       },
       {
         onSuccess: () => {
@@ -838,6 +844,10 @@ function ProjectDetail() {
             setNumChapters={setNumChapters}
             wordNumber={wordNumber}
             setWordNumber={setWordNumber}
+            storyShape={storyShape}
+            setStoryShape={setStoryShape}
+            totalChaptersTarget={totalChaptersTarget}
+            setTotalChaptersTarget={setTotalChaptersTarget}
             setDirty={setDirty}
             onSave={handleSaveProject}
           />

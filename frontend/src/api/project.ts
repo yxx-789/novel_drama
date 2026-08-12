@@ -33,6 +33,7 @@ export interface UpdateProjectRequest {
   num_chapters?: number
   word_number?: number
   story_shape?: string
+  total_chapters_target?: number | null
   status?: string
 }
 

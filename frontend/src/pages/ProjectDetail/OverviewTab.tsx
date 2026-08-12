@@ -17,6 +17,10 @@ interface OverviewTabProps {
   setNumChapters: (v: number) => void
   wordNumber: number
   setWordNumber: (v: number) => void
+  storyShape: string
+  setStoryShape: (v: string) => void
+  totalChaptersTarget: number | null
+  setTotalChaptersTarget: (v: number | null) => void
   setDirty: (v: boolean) => void
   onSave: () => void
 }
@@ -36,6 +40,10 @@ export default function OverviewTab({
   setNumChapters,
   wordNumber,
   setWordNumber,
+  storyShape,
+  setStoryShape,
+  totalChaptersTarget,
+  setTotalChaptersTarget,
   setDirty,
   onSave,
 }: OverviewTabProps) {
@@ -109,6 +117,55 @@ export default function OverviewTab({
               />
             </div>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">故事形态</label>
+            <div className="mt-1 space-y-2">
+              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input
+                  type="radio"
+                  name="storyShapeEdit"
+                  checked={storyShape === 'final'}
+                  onChange={() => { setStoryShape('final'); setTotalChaptersTarget(null) }}
+                  className="accent-indigo-600"
+                />
+                <span>短篇完结（第 {numChapters} 章即全书结局）</span>
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input
+                  type="radio"
+                  name="storyShapeEdit"
+                  checked={storyShape === 'open'}
+                  onChange={() => setStoryShape('open')}
+                  className="accent-indigo-600"
+                />
+                <span>连载开篇（第 {numChapters} 章留钩子，后续可续写）</span>
+              </label>
+            </div>
+            {storyShape === 'open' && (
+              <div className="mt-2">
+                {totalChaptersTarget ? (
+                  <p className="text-sm text-gray-700">
+                    全书目标总章数：<span className="font-medium">{totalChaptersTarget}</span> 章
+                    <span className="ml-2 text-xs text-gray-400">（创建后不可修改）</span>
+                  </p>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">全书目标总章数 M</label>
+                    <input
+                      type="number"
+                      min={10}
+                      max={1000}
+                      value={totalChaptersTarget ?? ''}
+                      onChange={(e) => setTotalChaptersTarget(e.target.value === '' ? null : Number(e.target.value))}
+                      placeholder="10~1000"
+                      className="mt-1 w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    />
+                    <p className="mt-1 text-xs text-amber-600">该数字创建后不可修改，请谨慎填写</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex justify-end space-x-4 pt-4">
             <button
               onClick={() => {
@@ -147,6 +204,15 @@ export default function OverviewTab({
             <div>
               <p className="text-xs text-slate-400">计划章节数</p>
               <p className="text-base font-medium text-gray-900">{project.num_chapters} 章</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-400">故事形态</p>
+              <p className="text-base font-medium text-gray-900">
+                {project.story_shape === 'open' ? '连载开篇' : '短篇完结'}
+              </p>
+              {project.story_shape === 'open' && project.total_chapters_target && (
+                <p className="text-base font-medium text-gray-900">全书目标：{project.total_chapters_target} 章（锁定）</p>
+              )}
             </div>
             <div>
               <p className="text-xs text-slate-400">每章字数</p>

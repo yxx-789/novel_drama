@@ -15,6 +15,10 @@ interface DirectoryTabProps {
   onSave: () => void
   onGenerate: (guidance?: string) => void
   onExport: () => void
+  canContinue: boolean
+  totalChaptersTarget: number | null
+  numChapters: number
+  onContinue: (k: number) => void
 }
 
 interface ChapterCard {
@@ -36,8 +40,14 @@ export default function DirectoryTab({
   onSave,
   onGenerate,
   onExport,
+  canContinue,
+  totalChaptersTarget,
+  numChapters,
+  onContinue,
 }: DirectoryTabProps) {
   const [mode, setMode] = useState<'preview' | 'edit'>('preview')
+  const [showContinue, setShowContinue] = useState(false)
+  const [continueK, setContinueK] = useState<number>(1)
 
   const chapters = useMemo(() => {
     if (!value.trim()) return []
@@ -155,6 +165,51 @@ export default function DirectoryTab({
             generating={generating}
             onGenerateWithGuidance={(g) => onGenerate(g)}
           />
+          {canContinue && (
+            <>
+              <button
+                onClick={() => { setContinueK(1); setShowContinue(true) }}
+                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg"
+              >
+                续写
+              </button>
+              {showContinue && (
+                <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+                  <div className="glass-panel p-6 rounded-xl w-96">
+                    <h3 className="text-base font-medium text-slate-800 mb-3">续写章节</h3>
+                    <p className="text-sm text-gray-600 mb-3">
+                      当前已写 {numChapters} 章
+                      {totalChaptersTarget ? `，全书目标 ${totalChaptersTarget} 章（剩余 ${totalChaptersTarget - numChapters} 章）` : ''}
+                      。本次续写将追加目录并生成正文。
+                    </p>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">续写章数 k</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={totalChaptersTarget ? totalChaptersTarget - numChapters : undefined}
+                      value={continueK}
+                      onChange={(e) => setContinueK(Number(e.target.value))}
+                      className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    />
+                    <div className="mt-4 flex justify-end gap-2">
+                      <button onClick={() => setShowContinue(false)} className="px-4 py-2 text-sm text-gray-600">取消</button>
+                      <button
+                        onClick={() => {
+                          if (continueK < 1) return
+                          if (totalChaptersTarget && continueK > totalChaptersTarget - numChapters) return
+                          setShowContinue(false)
+                          onContinue(continueK)
+                        }}
+                        className="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg"
+                      >
+                        开始续写
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
           <VersionHistory
             projectId={projectId}
             assetType="directory"

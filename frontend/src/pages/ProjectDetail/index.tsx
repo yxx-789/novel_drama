@@ -14,6 +14,7 @@ import {
   generateDramaEpisode,
   generateBatchChapters,
   generateDramaBatch,
+  generateContinueWriting,
 } from '../../api/generate'
 import {
   exportEpisodeScript,
@@ -190,6 +191,9 @@ function ProjectDetail() {
             setArchitectureGenerating(true)
           } else if (runningTask.task_type === 'directory') {
             setDirectoryGenerating(true)
+          } else if (runningTask.task_type === 'continue_writing') {
+            setDirectoryGenerating(true)
+            setActiveTask({ id: runningTask.id, type: 'continue_writing', progress: runningTask.progress, status: runningTask.status })
           } else if (runningTask.task_type === 'chapter') {
             const chNum = runningTask.params?.chapter_num
             if (typeof chNum === 'number') {
@@ -222,6 +226,12 @@ function ProjectDetail() {
               } else if (runningTask.task_type === 'directory' && id) {
                 queryClient.invalidateQueries({ queryKey: ['asset', id, 'directory'] })
                 queryClient.invalidateQueries({ queryKey: ['chapters', id] })
+              } else if (runningTask.task_type === 'continue_writing' && id) {
+                queryClient.invalidateQueries({ queryKey: ['asset', id, 'directory'] })
+                queryClient.invalidateQueries({ queryKey: ['chapters', id] })
+                queryClient.invalidateQueries({ queryKey: ['project', id] })
+                setDirectoryGenerating(false)
+                setActiveTask(null)
               } else if ((runningTask.task_type === 'chapter' || runningTask.task_type === 'batch_chapters') && id) {
                 queryClient.invalidateQueries({ queryKey: ['chapters', id] })
               } else if (runningTask.task_type.startsWith('drama') && id) {
@@ -375,6 +385,39 @@ function ProjectDetail() {
       )
     } catch (err: any) {
       setError(err.response?.data?.detail || '创建生成任务失败')
+      setDirectoryGenerating(false)
+      setActiveTask(null)
+    }
+  }
+
+  const handleContinueWriting = async (k: number) => {
+    if (!id) return
+    setDirectoryGenerating(true)
+    try {
+      const task = await generateContinueWriting(id, k)
+      setError('')
+      setActiveTask({ id: task.id, type: 'continue_writing', progress: 0, status: 'pending' })
+      pollCleanupRef.current?.()
+      pollCleanupRef.current = pollTask(
+        task.id,
+        async () => {
+          queryClient.invalidateQueries({ queryKey: ['asset', id, 'directory'] })
+          queryClient.invalidateQueries({ queryKey: ['chapters', id] })
+          queryClient.invalidateQueries({ queryKey: ['project', id] })
+          setDirectoryGenerating(false)
+          setActiveTask(null)
+        },
+        (msg) => {
+          setError(`续写失败: ${msg}`)
+          setDirectoryGenerating(false)
+          setActiveTask(null)
+        },
+        (progress, status) => {
+          setActiveTask((prev) => (prev ? { ...prev, progress, status } : null))
+        }
+      )
+    } catch (err: any) {
+      setError(err.response?.data?.detail || '创建续写任务失败')
       setDirectoryGenerating(false)
       setActiveTask(null)
     }
@@ -883,6 +926,10 @@ function ProjectDetail() {
             onSave={handleSaveDirectory}
             onGenerate={handleGenerateDirectory}
             onExport={() => handleExportAsset('directory')}
+            canContinue={project!.story_shape === 'open' && (!project!.total_chapters_target || project!.num_chapters < project!.total_chapters_target)}
+            totalChaptersTarget={project!.total_chapters_target}
+            numChapters={project!.num_chapters}
+            onContinue={handleContinueWriting}
           />
         )}
 

@@ -593,3 +593,28 @@ synthesize_book_summary_prompt = """\
 
 仅返回摘要文本，不要输出标题或解释性文字。
 """
+
+# =============== 13. 续写追加目录 ===================
+append_directory_prompt = """\
+基于以下元素：
+- 内容指导：{user_guidance}
+- 小说架构：
+{novel_architecture}
+- 已有定稿目录（前{existing_count}章）：
+{existing_directory}
+
+【写作上下文】
+{writing_context}
+
+【创作意图】
+用户的创作意图，必须严格遵循，冲突时以此为准：
+{creative_intent}
+
+请为本书追加第 {start_num} 章至第 {end_num} 章的目录。要求：
+- 严格衔接已有目录的节奏曲线与伏笔线索，不要修改、重复或推翻已定稿章节。
+- 只输出新增章节，输出格式与已有目录完全一致（"第n章 - [标题]" 起，含本章定位/核心作用/悬念密度/伏笔操作/本章简述）。
+
+{shape_instruction}
+
+仅给出最终文本，不要解释任何内容。
+"""

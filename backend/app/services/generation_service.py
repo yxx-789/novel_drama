@@ -17,6 +17,7 @@ import re
 from app.generator.block_library import build_context
 from app.generator.genre_methodology import _render_genre_methodology, _render_hook_preference
 from app.generator.prompts import (
+    append_directory_prompt,
     architecture_consistency_prompt,
     calm_build_state_summary_suffix,
     calm_extract_world_state_suffix,
@@ -342,6 +343,56 @@ async def generate_directory(
             f"got {len(parsed_chapters)}. This may indicate format issues in LLM output."
         )
     logger.info(f"Directory generation completed: {len(parsed_chapters)} chapters parsed.")
+    return directory_text, parsed_chapters
+
+
+async def generate_directory_append(
+    project: Project,
+    architecture_text: str = "",
+    existing_directory: str = "",
+    user_guidance: str = "",
+    llm_config: dict | None = None,
+) -> tuple[str, list[dict]]:
+    """
+    续写场景：基于架构版图与已有定稿目录，追加生成第 N+1 ~ N+k 章目录。
+    返回：(directory_text, parsed_chapters)，parsed 的 chapter_number 从 N+1 起。
+    """
+    if not settings.LLM_API_KEY and not (llm_config and llm_config.get("api_key")):
+        raise RuntimeError("LLM API key not configured")
+
+    adapter = _make_adapter(temperature=0.3, llm_config=llm_config)
+    writing_context, creative_intent = _prompt_context_for_project(project)
+
+    existing = parse_chapter_blueprint(existing_directory or "")
+    existing_count = max((ch["chapter_number"] for ch in existing), default=0)
+    start_num = existing_count + 1
+    end_num = project.num_chapters or 0
+    if start_num > end_num:
+        raise RuntimeError("No new chapters to append")
+
+    prompt = append_directory_prompt.format(
+        user_guidance=user_guidance or "",
+        novel_architecture=architecture_text or "",
+        existing_count=existing_count,
+        existing_directory=existing_directory or "（暂无）",
+        start_num=start_num,
+        end_num=end_num,
+        writing_context=writing_context,
+        creative_intent=creative_intent,
+        shape_instruction=_directory_shape_instruction(project, end_num=end_num),
+    )
+    directory_text = await _invoke_with_retry(adapter, prompt)
+    if not directory_text:
+        raise RuntimeError("Directory append failed")
+
+    parsed_chapters = parse_chapter_blueprint(directory_text)
+    new_nums = [ch["chapter_number"] for ch in parsed_chapters]
+    if not new_nums or min(new_nums) != start_num or max(new_nums) != end_num:
+        logger.warning(
+            f"Directory append parsing mismatch: expected {start_num}~{end_num}, "
+            f"got {new_nums}. This may indicate format issues in LLM output."
+        )
+    logger.info(f"Directory append completed: {len(parsed_chapters)} chapters parsed.")
     return directory_text, parsed_chapters
 
 

@@ -7,7 +7,7 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.services.generation_service import generate_architecture, generate_directory
+from app.services.generation_service import generate_architecture, generate_directory, generate_directory_append
 
 
 def _run(coro):
@@ -495,3 +495,37 @@ class TestDirectoryShapeInstruction:
         prompt = adapter.prompts[0]
         assert "None" not in prompt
         assert "全书终点章按结局章写法" in prompt
+
+
+_APPEND = "第4章 - 新篇\n本章简述：承接前文。\n\n第5章 - 推进\n本章简述：埋新线。"
+
+
+class TestDirectoryAppend:
+    def test_append_parses_next_range(self):
+        adapter = CapturingAdapter(_APPEND)
+        with patch("app.services.generation_service._make_adapter", return_value=adapter):
+            text, parsed = _run(generate_directory_append(
+                _project(story_shape="open", total_chapters_target=30, num_chapters=5),
+                architecture_text="架构",
+                existing_directory=_DIRECTORY,
+                llm_config=_LLM,
+            ))
+        assert [ch["chapter_number"] for ch in parsed] == [4, 5]
+        prompt = adapter.prompts[0]
+        assert "追加第 4 章至第 5 章" in prompt
+        assert "已有定稿目录（前3章）" in prompt
+        # end=5 < M=30 → 阶段收束指令
+        assert "阶段收束" in prompt
+
+    def test_append_final_chapter_when_reaching_target(self):
+        adapter = CapturingAdapter(_APPEND)
+        with patch("app.services.generation_service._make_adapter", return_value=adapter):
+            _run(generate_directory_append(
+                _project(story_shape="open", total_chapters_target=30, num_chapters=30),
+                architecture_text="架构",
+                existing_directory=_DIRECTORY,
+                llm_config=_LLM,
+            ))
+        prompt = adapter.prompts[0]
+        assert "全书终点" in prompt
+        assert "本次续写至第 30 章" in prompt

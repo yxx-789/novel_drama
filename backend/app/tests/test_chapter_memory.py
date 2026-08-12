@@ -218,6 +218,7 @@ def _patch_batch_pipeline(fake_db, fake_generate_draft, fake_extract_memory):
     """对 run_batch_chapters_task 的依赖做全套 mock。"""
     fake_task = SimpleNamespace(project_id="00000000-0000-0000-0000-000000000001")
     fake_project = SimpleNamespace(
+        id="00000000-0000-0000-0000-000000000001",
         owner_id="owner-1", genre="", num_chapters=2,
         word_number=2000, topic="", writing_config=None,
     )

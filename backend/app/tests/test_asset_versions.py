@@ -92,17 +92,24 @@ class _FakeResult:
     def scalar_one_or_none(self):
         return self.row
 
+    def scalars(self):
+        # 批量/续写任务用 list(scalars().all()) 读章节列表；row 为 list 时原样返回
+        rows = self.row if isinstance(self.row, (list, tuple)) else []
+        return SimpleNamespace(all=lambda: list(rows))
+
 
 class FakeDB:
     """按查询顺序返回预设行的最小 AsyncSession 替身。
 
     results: 每次 execute 依次 pop 返回；耗尽后返回 None。
     versions: record_asset_version 写入的行参数（供断言）。
+    added: add() 的所有对象（供断言 db.add 的章节等）。
     """
 
     def __init__(self, results=None):
         self.results = list(results or [])
         self.versions = []
+        self.added = []
         self.committed = False
 
     async def __aenter__(self):
@@ -116,6 +123,7 @@ class FakeDB:
         return _FakeResult(self.results.pop(0) if self.results else None)
 
     def add(self, obj):
+        self.added.append(obj)
         # brief 原文为 pass，导致 db.versions 永远为空、所有断言失败；
         # 按 docstring 语义（versions 供断言 record_asset_version 写入的行参数）捕获 AssetVersion。
         if hasattr(obj, "trigger_type"):
@@ -529,3 +537,170 @@ class TestDirectoryAppend:
         prompt = adapter.prompts[0]
         assert "全书终点" in prompt
         assert "本次续写至第 30 章" in prompt
+
+
+def _chapter(num, draft=None, status="pending"):
+    return SimpleNamespace(
+        chapter_num=num, title=f"第{num}章", outline="", draft=draft,
+        status=status, project_id="p1",
+    )
+
+
+class TestEnsureChaptersAppendSemantics:
+    def test_skip_existing_keeps_draft_chapters_untouched(self):
+        from app.services.task_service import _ensure_chapters
+
+        existing = _chapter(1, draft="定稿正文", status="draft_generated")
+        db = FakeDB(results=[existing])
+        parsed = [
+            {"chapter_number": 1, "chapter_title": "新标题", "chapter_summary": "新大纲"},
+            {"chapter_number": 2, "chapter_title": "第2章", "chapter_summary": ""},
+        ]
+        _run(_ensure_chapters(db, "p1", parsed, skip_existing=True))
+        # 已存在章节不被覆盖
+        assert existing.title == "第1章"
+        assert existing.outline == ""
+        assert existing.draft == "定稿正文"
+        # 新增章节被 add
+        added = [o for o in db.added if hasattr(o, "chapter_num")]
+        assert [a.chapter_num for a in added] == [2]
+
+
+class TestBatchIncremental:
+    def test_batch_skips_existing_draft(self):
+        from app.services.task_service import _batch_generate_drafts
+
+        ch1 = _chapter(1, draft="已有正文", status="draft_generated")
+        ch2 = _chapter(2)
+        db = FakeDB(results=[])
+        project = SimpleNamespace(id="p1", owner_id="u1", genre="玄幻",
+                                  num_chapters=2, word_number=1500, writing_config=None,
+                                  story_shape="final", total_chapters_target=None)
+        with patch("app.services.task_service.generate_chapter_draft") as mock_draft:
+            mock_draft.return_value = "新正文"
+            _run(_batch_generate_drafts(
+                db, "t1", project, {"api_key": "k"}, structure=None,
+                architecture_text="架构", directory_text="目录", world_state={},
+                template=None, chapter_list=[ch1, ch2], total=2,
+            ))
+        # 只生成 ch2
+        assert mock_draft.call_count == 1
+        assert mock_draft.call_args.kwargs["chapter_num"] == 2
+        assert ch1.draft == "已有正文"
+        assert ch2.draft == "新正文"
+
+
+def _continue_project(**overrides):
+    base = dict(
+        id="p1", owner_id="u1", story_shape="open", total_chapters_target=30,
+        num_chapters=20, topic="t", genre="g", word_number=1500, writing_config=None,
+    )
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
+def _parsed_1_to_n(n):
+    return [
+        {"chapter_number": num, "chapter_title": f"第{num}章", "chapter_summary": ""}
+        for num in range(1, n + 1)
+    ]
+
+
+def _chapter_rows_1_to_n(n):
+    return [
+        SimpleNamespace(chapter_num=num, title=f"第{num}章", outline="",
+                        draft=None, status="draft", project_id="p1")
+        for num in range(1, n + 1)
+    ]
+
+
+class TestContinueWritingTask:
+    def test_continue_updates_num_chapters_and_appends(self):
+        from app.services.task_service import run_continue_writing_task
+
+        project = _continue_project()
+        task = SimpleNamespace(
+            id="55555555-5555-5555-5555-555555555555",
+            project_id="66666666-6666-6666-6666-666666666666",
+            params={"project_id": "66666666-6666-6666-6666-666666666666", "chapters": 5},
+        )
+        # existing_directory="已有目录" 无解析章节 → existing_count=0 → 追加目录须覆盖 1~25 章
+        parsed = _parsed_1_to_n(25)
+        # 查询消费顺序：task + 28 个 None（状态/ensure_chapters）+ 章节列表行（scalars）
+        chapters = _chapter_rows_1_to_n(25)
+        db = FakeDB(results=[task] + [None] * 28 + [chapters])
+        with patch("app.services.task_service.get_project_by_id", return_value=project), \
+             patch("app.services.task_service.resolve_llm_config", return_value={"api_key": "k"}), \
+             patch("app.services.task_service._get_asset_text", side_effect=["架构", "已有目录", "{}"]), \
+             patch("app.services.task_service.generate_directory_append",
+                   return_value=("追加目录", parsed)) as mock_append, \
+             patch("app.services.task_service._save_asset"), \
+             patch("app.services.task_service._batch_generate_drafts") as mock_batch, \
+             patch("app.services.task_service._synthesize_book_summary_asset"), \
+             patch("app.services.task_service.AsyncSessionLocal", return_value=db):
+            _run(run_continue_writing_task("t1"))
+        # 1) num_chapters 更新
+        assert project.num_chapters == 25
+        # 2) 追加目录调用了
+        _, kwargs = mock_append.call_args
+        assert kwargs["existing_directory"] == "已有目录"
+        # 3) 增量正文复用批量循环
+        assert mock_batch.call_count == 1
+
+    def test_continue_rejects_exceeding_target(self):
+        from app.services.task_service import run_continue_writing_task
+
+        project = _continue_project(num_chapters=28)
+        task = SimpleNamespace(
+            id="77777777-7777-7777-7777-777777777777",
+            project_id="88888888-8888-8888-8888-888888888888",
+            params={"project_id": "88888888-8888-8888-8888-888888888888", "chapters": 5},
+        )
+        # 第二次 get_task_by_id（失败状态落库）需再次返回 task
+        db = FakeDB(results=[task, task])
+        with patch("app.services.task_service.get_project_by_id", return_value=project), \
+             patch("app.services.task_service.AsyncSessionLocal", return_value=db):
+            _run(run_continue_writing_task("t1"))
+        # 超界 → 任务失败，num_chapters 不变
+        assert project.num_chapters == 28
+        assert db.committed  # failed 状态落库
+
+    def test_continue_rejects_non_open_shape(self):
+        from app.services.task_service import run_continue_writing_task
+
+        project = _continue_project(story_shape="final")
+        task = SimpleNamespace(
+            id="99999999-9999-9999-9999-999999999999",
+            project_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            params={"project_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "chapters": 5},
+        )
+        db = FakeDB(results=[task])
+        with patch("app.services.task_service.get_project_by_id", return_value=project), \
+             patch("app.services.task_service.AsyncSessionLocal", return_value=db):
+            _run(run_continue_writing_task("t1"))
+        assert project.num_chapters == 20
+
+    def test_continue_without_target_graceful(self):
+        """open + M=None（无全书目标）时续写优雅推进：不校验上限、append 照常调用。"""
+        from app.services.task_service import run_continue_writing_task
+
+        project = _continue_project(total_chapters_target=None)
+        task = SimpleNamespace(
+            id="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            project_id="cccccccc-cccc-cccc-cccc-cccccccccccc",
+            params={"project_id": "cccccccc-cccc-cccc-cccc-cccccccccccc", "chapters": 5},
+        )
+        parsed = _parsed_1_to_n(25)
+        chapters = _chapter_rows_1_to_n(25)
+        db = FakeDB(results=[task] + [None] * 28 + [chapters])
+        with patch("app.services.task_service.get_project_by_id", return_value=project), \
+             patch("app.services.task_service.resolve_llm_config", return_value={"api_key": "k"}), \
+             patch("app.services.task_service._get_asset_text", side_effect=["架构", "", "{}"]), \
+             patch("app.services.task_service.generate_directory_append",
+                   return_value=("追加目录", parsed)) as mock_append, \
+             patch("app.services.task_service._save_asset"), \
+             patch("app.services.task_service._batch_generate_drafts"), \
+             patch("app.services.task_service.AsyncSessionLocal", return_value=db):
+            _run(run_continue_writing_task("t1"))
+        assert project.num_chapters == 25
+        assert mock_append.call_count == 1

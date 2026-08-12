@@ -444,6 +444,7 @@ def _patch_batch(fake_db, fake_extract_memory, fake_generate_draft=None):
             return f"第{kwargs['chapter_num']}章草稿"
     fake_task = SimpleNamespace(project_id=PROJECT_ID)
     fake_project = SimpleNamespace(
+        id="00000000-0000-0000-0000-000000000001",
         owner_id="owner-1", genre="", num_chapters=2,
         word_number=2000, topic="", writing_config=None,
     )
@@ -559,6 +560,7 @@ class TestBatchWiring:
         db = _FakeDB(chapters=[_mk_chapter(1, "大纲1"), _mk_chapter(2, "大纲2")])
         fake_task = SimpleNamespace(project_id=PROJECT_ID)
         fake_project = SimpleNamespace(
+            id="00000000-0000-0000-0000-000000000001",
             owner_id="owner-1", genre="", num_chapters=2, word_number=2000, topic="",
             writing_config=None,
         )
@@ -628,6 +630,7 @@ class TestBatchWiring:
         db = _FakeDB(chapters=[_mk_chapter(1, "大纲1"), _mk_chapter(2, "大纲2")])
         fake_task = SimpleNamespace(project_id=PROJECT_ID)
         fake_project = SimpleNamespace(
+            id="00000000-0000-0000-0000-000000000001",
             owner_id="owner-1", genre="", num_chapters=2, word_number=2000, topic="",
             writing_config=None,
         )

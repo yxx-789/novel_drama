@@ -20,6 +20,7 @@ from app.services.generation_service import (
     generate_architecture,
     generate_chapter_draft,
     generate_directory,
+    generate_directory_append,
     load_active_character_cards,
     merge_world_state,
     parse_chapter_blueprint,
@@ -301,8 +302,16 @@ async def _get_asset_text(db: AsyncSession, project_id: str, asset_type: str) ->
     return asset.content_text if asset else None
 
 
-async def _ensure_chapters(db: AsyncSession, project_id: str, parsed_chapters: list[dict]) -> None:
-    """根据解析的目录，初始化或更新 chapters 表记录"""
+async def _ensure_chapters(
+    db: AsyncSession,
+    project_id: str,
+    parsed_chapters: list[dict],
+    skip_existing: bool = False,
+) -> None:
+    """根据解析的目录，初始化或更新 chapters 表记录。
+
+    skip_existing=True（续写追加场景）：已存在章节跳过不动，保护定稿的标题/大纲。
+    """
     from app.models.project import Chapter
     for ch in parsed_chapters:
         num = ch["chapter_number"]
@@ -322,6 +331,8 @@ async def _ensure_chapters(db: AsyncSession, project_id: str, parsed_chapters: l
                 status="draft",
             )
             db.add(chapter)
+        elif skip_existing:
+            continue
         else:
             # 更新已有记录的标题和摘要
             if ch["chapter_title"]:
@@ -842,8 +853,210 @@ async def _ensure_drama_episodes(db: AsyncSession, project_id: str, episodes: li
     await db.commit()
 
 
+async def _batch_generate_drafts(
+    db: AsyncSession,
+    task_id: uuid.UUID,
+    project: Project,
+    llm_config: dict,
+    structure,
+    architecture_text: str,
+    directory_text: str,
+    world_state: dict,
+    template,
+    chapter_list: list,
+    total: int,
+) -> None:
+    """串行生成章节正文；已有 draft 的章节跳过（增量语义）。
+
+    批量生成与续写任务共用。负责循环内进度更新与结尾统计/状态落库。
+    """
+    from app.models.project import Chapter
+    generated_count = 0
+    failed_chapters = []
+    for idx, chapter in enumerate(chapter_list):
+        chapter_num = chapter.chapter_num
+        # 增量语义：已生成的章节跳过（保护定稿正文）
+        if chapter.draft and chapter.status in ("draft_generated", "done"):
+            logger.info(f"Batch task {task_id}: skip chapter {chapter_num} (draft exists)")
+            continue
+        logger.info(f"Batch task {task_id}: generating chapter {chapter_num} ({idx + 1}/{total}) ...")
+        try:
+            # ===== 以下循环体从原 run_batch_chapters_task 原样搬入（previous_draft 起，至 db.commit() + 后台合并/arc 冻结）=====
+            previous_draft = None
+            previous_summary = ""
+            if chapter_num > 1:
+                result = await db.execute(
+                    select(Chapter).where(
+                        Chapter.project_id == str(project.id),
+                        Chapter.chapter_num == chapter_num - 1,
+                    )
+                )
+                prev_chapter = result.scalar_one_or_none()
+                if prev_chapter:
+                    previous_draft = prev_chapter.draft
+                    previous_summary = _previous_chapter_summary(prev_chapter)
+
+            # 构建 world_state 摘要
+            world_state_summary = ""
+            if world_state:
+                try:
+                    parsed = parse_chapter_blueprint(directory_text)
+                    current_chapter_info = None
+                    for ch in parsed:
+                        if ch["chapter_number"] == chapter_num:
+                            current_chapter_info = ch
+                            break
+                    world_state_summary = await build_state_summary(
+                        world_state=world_state,
+                        target_chapter=chapter_num,
+                        chapter_title=current_chapter_info["chapter_title"] if current_chapter_info else "",
+                        chapter_summary=current_chapter_info["chapter_summary"] if current_chapter_info else "",
+                        llm_config=llm_config,
+                        structure=structure,
+                    )
+                except Exception as e:
+                    logger.warning(f"Batch build state summary failed for chapter {chapter_num}: {e}")
+
+            # V3 P3-B：写前追加 L2 上下文（已冻结 arc 摘要 + 伏笔/副线提醒），零新增 LLM 调用
+            try:
+                l2_context = await _build_l2_foreshadowing_context(
+                    db, str(project.id), chapter_num, project.genre or ""
+                )
+                if l2_context:
+                    world_state_summary = (
+                        f"{world_state_summary}\n\n{l2_context}".strip()
+                        if world_state_summary else l2_context
+                    )
+            except Exception as e:
+                logger.warning(f"Batch L2 context build failed for chapter {chapter_num}: {e}")
+
+            # P2-B: 写前只加载出场角色卡（按本章，不再循环外全量加载一次）
+            character_state_text = await load_active_character_cards(db, str(project.id), chapter_num) or ""
+
+            draft_text = await generate_chapter_draft(
+                project,
+                chapter_num=chapter_num,
+                architecture_text=architecture_text,
+                directory_text=directory_text,
+                character_state_text=character_state_text,
+                previous_chapter_draft=previous_draft,
+                previous_chapter_summary=previous_summary,
+                world_state_summary=world_state_summary,
+                llm_config=llm_config,
+            )
+
+            chapter.draft = draft_text
+            chapter.status = "draft_generated"
+
+            # 章节生成后一致性检查（非阻塞）
+            if character_state_text:
+                try:
+                    check_result = await check_chapter_consistency(
+                        chapter_text=draft_text,
+                        character_state_text=character_state_text,
+                        previous_chapter_draft=previous_draft,
+                        llm_config=llm_config,
+                    )
+                    if "INCONSISTENT" in check_result.upper():
+                        logger.warning(f"Batch chapter {chapter_num} consistency issues detected:\n{check_result}")
+                    else:
+                        logger.info(f"Batch chapter {chapter_num} consistency check passed.")
+                except Exception as e:
+                    logger.warning(f"Batch chapter consistency check failed for chapter {chapter_num}: {e}")
+
+            # P2-B: 更新角色卡（结构化档案双通道写回；失败不中断生成，保留旧状态）
+            try:
+                await update_character_cards(
+                    db, str(project.id), chapter_num, draft_text, llm_config=llm_config,
+                )
+            except Exception as e:
+                logger.warning(f"Character cards update failed for chapter {chapter_num}: {e}")
+
+            # 提取并更新 world_state（非阻塞）
+            try:
+                delta = await extract_world_state_delta(
+                    chapter_text=draft_text,
+                    chapter_number=chapter_num,
+                    current_state=world_state,
+                    template=template,
+                    llm_config=llm_config,
+                    structure=structure,
+                )
+                if not delta.get("no_changes"):
+                    world_state = merge_world_state(world_state, delta)
+                    await _save_asset(
+                        db, str(project.id), "world_state",
+                        json.dumps(world_state, ensure_ascii=False, indent=2)
+                    )
+                    logger.info(f"Batch world state updated for chapter {chapter_num}")
+            except Exception as e:
+                logger.warning(f"Batch world state update failed for chapter {chapter_num}: {e}")
+
+            # 结构化章节记忆提取（非阻塞，失败不中断生成）
+            memory = {}
+            try:
+                memory = await extract_chapter_memory(db, chapter, llm_config)
+                if memory and memory.get("summary"):
+                    chapter.actual_summary_json = memory
+                    logger.info(f"Batch chapter memory extracted for chapter {chapter_num}")
+            except Exception as e:
+                logger.warning(f"Batch chapter memory extraction failed for chapter {chapter_num}: {e}")
+
+            await db.commit()
+
+            # V3 P3-B：写后台账合并（纯规则）+ arc 边界冻结（失败不中断）
+            if memory and memory.get("summary"):
+                await _merge_foreshadowing_ledger(
+                    db, str(project.id), chapter_num, memory, project.genre or ""
+                )
+            await _finalize_arc_summary(db, str(project.id), chapter_num, llm_config)
+            # ===== 循环体搬入结束 =====
+
+            generated_count += 1
+        except Exception as e:
+            logger.exception(f"Batch chapter {chapter_num} generation failed: {e}")
+            failed_chapters.append({"chapter_num": chapter_num, "error": str(e)})
+            await db.commit()
+
+        progress = 10 + int((idx + 1) / total * 85)
+        await update_task_status(
+            db, task_id, "running", progress=progress,
+            result={
+                "current_chapter": chapter_num,
+                "completed": generated_count,
+                "total": total,
+                "failed": len(failed_chapters),
+                "failed_chapters": failed_chapters,
+            }
+        )
+
+    # V3 P3-B：全书写完（循环结束）合成全书摘要（L3）；失败不中断
+    try:
+        await _synthesize_book_summary_asset(db, str(project.id), llm_config)
+    except Exception as e:
+        logger.warning(f"Book summary synthesis failed for task {task_id}: {e}")
+
+    if failed_chapters:
+        await update_task_status(
+            db, task_id, "success", progress=100,
+            result={
+                "total": total,
+                "generated": generated_count,
+                "failed_count": len(failed_chapters),
+                "failed_chapters": failed_chapters,
+            }
+        )
+        logger.warning(f"Batch chapters task {task_id} completed with failures: {generated_count}/{total}, failed: {failed_chapters}")
+    else:
+        await update_task_status(
+            db, task_id, "success", progress=100,
+            result={"total": total, "generated": generated_count}
+        )
+        logger.info(f"Batch chapters task {task_id} completed: {generated_count}/{total}")
+
+
 async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
-    """后台执行批量章节正文生成任务（串行逐章生成）"""
+    """后台执行批量章节正文生成任务（串行逐章生成，已有 draft 章节跳过）"""
     async with AsyncSessionLocal() as db:
         try:
             task = await get_task_by_id(db, task_id)
@@ -891,187 +1104,106 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
                 raise RuntimeError("No chapters found. Please generate directory first.")
 
             await update_task_status(db, task_id, "running", progress=10)
-
-            generated_count = 0
-            failed_chapters = []
-            for idx, chapter in enumerate(chapter_list):
-                chapter_num = chapter.chapter_num
-                logger.info(f"Batch task {task_id}: generating chapter {chapter_num} ({idx + 1}/{total}) ...")
-
-                try:
-                    previous_draft = None
-                    previous_summary = ""
-                    if chapter_num > 1:
-                        result = await db.execute(
-                            select(Chapter).where(
-                                Chapter.project_id == str(task.project_id),
-                                Chapter.chapter_num == chapter_num - 1,
-                            )
-                        )
-                        prev_chapter = result.scalar_one_or_none()
-                        if prev_chapter:
-                            previous_draft = prev_chapter.draft
-                            previous_summary = _previous_chapter_summary(prev_chapter)
-
-                    # 构建 world_state 摘要
-                    world_state_summary = ""
-                    if world_state:
-                        try:
-                            parsed = parse_chapter_blueprint(directory_text)
-                            current_chapter_info = None
-                            for ch in parsed:
-                                if ch["chapter_number"] == chapter_num:
-                                    current_chapter_info = ch
-                                    break
-                            world_state_summary = await build_state_summary(
-                                world_state=world_state,
-                                target_chapter=chapter_num,
-                                chapter_title=current_chapter_info["chapter_title"] if current_chapter_info else "",
-                                chapter_summary=current_chapter_info["chapter_summary"] if current_chapter_info else "",
-                                llm_config=llm_config,
-                                structure=structure,
-                            )
-                        except Exception as e:
-                            logger.warning(f"Batch build state summary failed for chapter {chapter_num}: {e}")
-
-                    # V3 P3-B：写前追加 L2 上下文（已冻结 arc 摘要 + 伏笔/副线提醒），零新增 LLM 调用
-                    try:
-                        l2_context = await _build_l2_foreshadowing_context(
-                            db, str(task.project_id), chapter_num, project.genre or ""
-                        )
-                        if l2_context:
-                            world_state_summary = (
-                                f"{world_state_summary}\n\n{l2_context}".strip()
-                                if world_state_summary else l2_context
-                            )
-                    except Exception as e:
-                        logger.warning(f"Batch L2 context build failed for chapter {chapter_num}: {e}")
-
-                    # P2-B: 写前只加载出场角色卡（按本章，不再循环外全量加载一次）
-                    character_state_text = await load_active_character_cards(db, str(task.project_id), chapter_num) or ""
-
-                    draft_text = await generate_chapter_draft(
-                        project,
-                        chapter_num=chapter_num,
-                        architecture_text=architecture_text,
-                        directory_text=directory_text,
-                        character_state_text=character_state_text,
-                        previous_chapter_draft=previous_draft,
-                        previous_chapter_summary=previous_summary,
-                        world_state_summary=world_state_summary,
-                        llm_config=llm_config,
-                    )
-
-                    chapter.draft = draft_text
-                    chapter.status = "draft_generated"
-
-                    # 章节生成后一致性检查（非阻塞）
-                    if character_state_text:
-                        try:
-                            check_result = await check_chapter_consistency(
-                                chapter_text=draft_text,
-                                character_state_text=character_state_text,
-                                previous_chapter_draft=previous_draft,
-                                llm_config=llm_config,
-                            )
-                            if "INCONSISTENT" in check_result.upper():
-                                logger.warning(f"Batch chapter {chapter_num} consistency issues detected:\n{check_result}")
-                            else:
-                                logger.info(f"Batch chapter {chapter_num} consistency check passed.")
-                        except Exception as e:
-                            logger.warning(f"Batch chapter consistency check failed for chapter {chapter_num}: {e}")
-
-                    # P2-B: 更新角色卡（结构化档案双通道写回；失败不中断生成，保留旧状态）
-                    # 不再内存累积全量状态——下一章从资产重新加载"出场角色卡"
-                    try:
-                        await update_character_cards(
-                            db, str(task.project_id), chapter_num, draft_text, llm_config=llm_config,
-                        )
-                    except Exception as e:
-                        logger.warning(f"Character cards update failed for chapter {chapter_num}: {e}")
-
-                    # 提取并更新 world_state（非阻塞）
-                    try:
-                        delta = await extract_world_state_delta(
-                            chapter_text=draft_text,
-                            chapter_number=chapter_num,
-                            current_state=world_state,
-                            template=template,
-                            llm_config=llm_config,
-                            structure=structure,
-                        )
-                        if not delta.get("no_changes"):
-                            world_state = merge_world_state(world_state, delta)
-                            await _save_asset(
-                                db, str(task.project_id), "world_state",
-                                json.dumps(world_state, ensure_ascii=False, indent=2)
-                            )
-                            logger.info(f"Batch world state updated for chapter {chapter_num}")
-                    except Exception as e:
-                        logger.warning(f"Batch world state update failed for chapter {chapter_num}: {e}")
-
-                    # 结构化章节记忆提取（非阻塞，失败不中断生成）
-                    memory = {}
-                    try:
-                        memory = await extract_chapter_memory(db, chapter, llm_config)
-                        if memory and memory.get("summary"):
-                            chapter.actual_summary_json = memory
-                            logger.info(f"Batch chapter memory extracted for chapter {chapter_num}")
-                    except Exception as e:
-                        logger.warning(f"Batch chapter memory extraction failed for chapter {chapter_num}: {e}")
-
-                    await db.commit()
-
-                    # V3 P3-B：写后台账合并（纯规则）+ arc 边界冻结（失败不中断）
-                    if memory and memory.get("summary"):
-                        await _merge_foreshadowing_ledger(
-                            db, str(task.project_id), chapter_num, memory, project.genre or ""
-                        )
-                    await _finalize_arc_summary(db, str(task.project_id), chapter_num, llm_config)
-
-                    generated_count += 1
-                except Exception as e:
-                    logger.exception(f"Batch chapter {chapter_num} generation failed: {e}")
-                    failed_chapters.append({"chapter_num": chapter_num, "error": str(e)})
-                    await db.commit()
-
-                progress = 10 + int((idx + 1) / total * 85)
-                await update_task_status(
-                    db, task_id, "running", progress=progress,
-                    result={
-                        "current_chapter": chapter_num,
-                        "completed": generated_count,
-                        "total": total,
-                        "failed": len(failed_chapters),
-                        "failed_chapters": failed_chapters,
-                    }
-                )
-
-            # V3 P3-B：全书写完（循环结束）合成全书摘要（L3）；失败不中断
-            try:
-                await _synthesize_book_summary_asset(db, str(task.project_id), llm_config)
-            except Exception as e:
-                logger.warning(f"Book summary synthesis failed for task {task_id}: {e}")
-
-            if failed_chapters:
-                await update_task_status(
-                    db, task_id, "success", progress=100,
-                    result={
-                        "total": total,
-                        "generated": generated_count,
-                        "failed_count": len(failed_chapters),
-                        "failed_chapters": failed_chapters,
-                    }
-                )
-                logger.warning(f"Batch chapters task {task_id} completed with failures: {generated_count}/{total}, failed: {failed_chapters}")
-            else:
-                await update_task_status(
-                    db, task_id, "success", progress=100,
-                    result={"total": total, "generated": generated_count}
-                )
-                logger.info(f"Batch chapters task {task_id} completed: {generated_count}/{total}")
+            await _batch_generate_drafts(
+                db, task_id, project, llm_config, structure,
+                architecture_text, directory_text, world_state, template, chapter_list, total,
+            )
         except Exception as e:
             logger.exception(f"Batch chapters task {task_id} failed: {e}")
+            try:
+                await update_task_status(db, task_id, "failed", error_msg=str(e))
+            except Exception:
+                pass
+
+
+async def run_continue_writing_task(task_id: uuid.UUID) -> None:
+    """续写闭环：更新 num_chapters → 追加目录 → 增量正文（一个任务串行执行）。"""
+    async with AsyncSessionLocal() as db:
+        try:
+            task = await get_task_by_id(db, task_id)
+            if not task:
+                logger.error(f"Task {task_id} not found")
+                return
+
+            project = await get_project_by_id(db, uuid.UUID(str(task.project_id)))
+            if not project:
+                raise RuntimeError("Project not found")
+            if project.story_shape != "open":
+                raise RuntimeError("仅连载开篇（open）形态项目可续写")
+
+            k = int((task.params or {}).get("chapters", 0) or 0)
+            if k < 1:
+                raise RuntimeError("续写章数必须为正整数")
+            m = project.total_chapters_target
+            if m and project.num_chapters + k > m:
+                raise RuntimeError(f"续写后总章数不能超过全书目标 {m} 章")
+
+            await update_task_status(db, task_id, "running", progress=10)
+
+            # 1. 更新全书章数
+            project.num_chapters = project.num_chapters + k
+            await db.commit()
+
+            llm_config = await resolve_llm_config(str(project.owner_id), db)
+            structure = _structure_for_project(project)
+
+            architecture_text = await _get_asset_text(db, str(task.project_id), "architecture")
+            if not architecture_text:
+                raise RuntimeError("Architecture not found. Please generate architecture first.")
+            existing_directory = await _get_asset_text(db, str(task.project_id), "directory")
+
+            # 2. 追加目录（只新增 N+1 ~ N+k 章，不覆盖已有定稿）
+            await update_task_status(db, task_id, "running", progress=30)
+            existing = parse_chapter_blueprint(existing_directory or "")
+            existing_count = max((ch["chapter_number"] for ch in existing), default=0)
+            directory_text, parsed_chapters = await generate_directory_append(
+                project,
+                architecture_text=architecture_text,
+                existing_directory=existing_directory or "",
+                llm_config=llm_config,
+            )
+            # 追加结果硬校验：空或范围错位 → 拒绝落库（保护已有定稿目录）
+            if not parsed_chapters:
+                raise RuntimeError("续写目录解析为空，请重试")
+            new_nums = [ch["chapter_number"] for ch in parsed_chapters]
+            expected_start = existing_count + 1
+            if min(new_nums) != expected_start or max(new_nums) != project.num_chapters:
+                raise RuntimeError(
+                    f"续写目录章节范围不匹配：期望 {expected_start}~{project.num_chapters}，"
+                    f"实际 {min(new_nums)}~{max(new_nums)}"
+                )
+            await _save_asset(db, str(task.project_id), "directory", directory_text,
+                              trigger_type="generate", guidance="continue_writing")
+            await _ensure_chapters(db, str(task.project_id), parsed_chapters, skip_existing=True)
+
+            # 3. 增量正文（已有 draft 章节自动跳过）
+            await update_task_status(db, task_id, "running", progress=45)
+            world_state_raw = await _get_asset_text(db, str(task.project_id), "world_state")
+            world_state: dict = {}
+            if world_state_raw:
+                try:
+                    world_state = json.loads(world_state_raw)
+                except Exception:
+                    world_state = {}
+            template = get_template(project.genre or "")
+            from app.models.project import Chapter
+            result = await db.execute(
+                select(Chapter).where(
+                    Chapter.project_id == str(task.project_id),
+                ).order_by(Chapter.chapter_num)
+            )
+            chapter_list = list(result.scalars().all())
+            total = len(chapter_list)
+            if total == 0:
+                raise RuntimeError("No chapters found after directory append.")
+
+            await _batch_generate_drafts(
+                db, task_id, project, llm_config, structure,
+                architecture_text, directory_text, world_state, template, chapter_list, total,
+            )
+            logger.info(f"Continue writing task {task_id} completed")
+        except Exception as e:
+            logger.exception(f"Continue writing task {task_id} failed: {e}")
             try:
                 await update_task_status(db, task_id, "failed", error_msg=str(e))
             except Exception:

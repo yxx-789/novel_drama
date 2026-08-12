@@ -129,6 +129,8 @@ def test_prompt_placeholders_all_formatable():
         "genre_methodology", "hook_preference",
         # 既有字段（生成服务 format 时传入）
         "topic", "genre", "number_of_chapters", "word_number", "writing_context", "creative_intent",
+        # 故事形态篇幅行（V3 P2 形态闭环，生成服务 format 时传入）
+        "scope_statement",
         "user_guidance", "core_seed", "novel_setting", "character_state", "world_state_summary",
         "chapter_title", "chapter_summary", "previous_chapter_summary", "previous_chapter_excerpt",
         "chapter_number", "novel_architecture", "character_dynamics", "world_building",

@@ -33,6 +33,8 @@ def _project(**overrides):
         num_chapters=3,
         word_number=1500,
         writing_config={"structure": "日常流", "core_genre": "玄幻"},
+        story_shape="final",
+        total_chapters_target=None,
     )
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -421,3 +423,35 @@ class TestVersionsRouter:
             )
         self._clear_overrides()
         assert res.status_code == 400, res.text
+
+
+class TestArchitectureShapeInstruction:
+    def test_architecture_final_injects_closed_loop_instruction(self):
+        adapter = CapturingAdapter()
+        with patch("app.services.generation_service._make_adapter", return_value=adapter):
+            _run(generate_architecture(_project(story_shape="final"), llm_config=_LLM))
+        seed_prompt = adapter.prompts[0]
+        plot_prompt = adapter.prompts[3]
+        # Step 1 篇幅行：final 闭环表述
+        assert "本书 3 章内完结" in seed_prompt
+        # Step 4 指令块：卷目总和 = N、第 N 章结局
+        assert "短篇完结" in plot_prompt
+        assert "卷目划分总和等于 3" in plot_prompt
+        assert "第 3 章为全书结局章" in plot_prompt
+
+    def test_architecture_open_injects_book_map_instruction(self):
+        adapter = CapturingAdapter()
+        with patch("app.services.generation_service._make_adapter", return_value=adapter):
+            _run(generate_architecture(
+                _project(story_shape="open", total_chapters_target=30), llm_config=_LLM))
+        seed_prompt = adapter.prompts[0]
+        plot_prompt = adapter.prompts[3]
+        # Step 1 篇幅行：连载版图表述
+        assert "当前阶段约 3 章" in seed_prompt
+        assert "全书规划约 30 章" in seed_prompt
+        assert "本书 3 章内完结" not in seed_prompt
+        # Step 4 指令块：版图 + 阶段标注 + 第 30 章终点
+        assert "连载开篇" in plot_prompt
+        assert "前 3 章" in plot_prompt
+        assert "续写钩子" in plot_prompt
+        assert "第 30 章为全书终点" in plot_prompt

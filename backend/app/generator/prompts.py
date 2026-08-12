@@ -10,7 +10,7 @@ core_seed_prompt = """\
 作为专业作家，请用"雪花写作法"第一步构建故事核心：
 主题：{topic}
 类型：{genre}
-篇幅：约{number_of_chapters}章（每章{word_number}字）
+篇幅：{scope_statement}
 
 【写作上下文】
 {writing_context}
@@ -200,6 +200,7 @@ plot_architecture_prompt = """\
 {creative_intent}
 
 请围绕上述元素设计整部小说的情节架构，注意：
+{shape_instruction}
 - 剧情推进要有起落节奏，张弛有度，避免平铺直叙。
 - 各阶段的关键转折点与伏笔，需有清晰的铺垫与回收方案。
 - 情节走向应呼应前文设定并服务用户的创作意图，不必为结构而结构。

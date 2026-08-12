@@ -134,6 +134,41 @@ def _current_content_section(current_content: str, asset_name: str) -> str:
     )
 
 
+def _scope_statement(project: Project) -> str:
+    """构造核心种子篇幅行：final 闭环 / open 连载版图表述。"""
+    n = project.num_chapters or 10
+    w = project.word_number or 2000
+    if project.story_shape == "open":
+        m = project.total_chapters_target
+        if m:
+            return f"当前阶段约 {n} 章（每章 {w} 字），全书规划约 {m} 章，请按全书规模设计"
+        return f"约 {n} 章（每章 {w} 字），后续可按需续写"
+    return f"约 {n} 章（每章 {w} 字），本书 {n} 章内完结"
+
+
+def _architecture_shape_instruction(project: Project) -> str:
+    """构造情节架构生成的形态约束指令块。"""
+    n = project.num_chapters or 10
+    if project.story_shape == "open":
+        m = project.total_chapters_target
+        m_text = f"（全书规划约 {m} 章）" if m else ""
+        return (
+            f"【形态约束：连载开篇】\n"
+            f"本书为连载开篇，当前阶段为前 {n} 章（全书第一阶段）{m_text}。\n"
+            f"- 请按全书规模设计版图：卷目划分总和约 {m if m else '全书'} 章，"
+            f"主线按全书长度铺排，不在 {n} 章内强行完结。\n"
+            f"- 第 {n} 章为阶段收束点，预留 1-3 个续写钩子（未解之谜 / 新线索 / 暗线推进）。\n"
+            f"- 第 {m} 章为全书终点（结局章写法）：主线闭合、伏笔全回收。"
+        )
+    return (
+        f"【形态约束：短篇完结】\n"
+        f"本书共 {n} 章，本架构必须在此范围内完整闭环：\n"
+        f"- 卷目划分总和等于 {n}。\n"
+        f"- 主线在 {n} 章内走完，所有伏笔在 {n} 章内回收。\n"
+        f"- 第 {n} 章为全书结局章：情感与剧情双收束。"
+    )
+
+
 async def generate_architecture(
     project: Project,
     user_guidance: str = "",
@@ -157,8 +192,7 @@ async def generate_architecture(
     prompt = core_seed_prompt.format(
         topic=project.topic or "",
         genre=project.genre or "",
-        number_of_chapters=project.num_chapters or 10,
-        word_number=project.word_number or 2000,
+        scope_statement=_scope_statement(project),
         writing_context=writing_context,
         creative_intent=creative_intent,
         structure_seed_guidance=guidance["seed"],
@@ -200,6 +234,7 @@ async def generate_architecture(
         writing_context=writing_context,
         creative_intent=creative_intent,
         current_content_section=current_section,
+        shape_instruction=_architecture_shape_instruction(project),
     )
     plot_architecture = await _invoke_with_retry(adapter, prompt)
     logger.info("Architecture step 4/5: Plot architecture generated")

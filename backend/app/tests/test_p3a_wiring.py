@@ -40,6 +40,8 @@ def _project(**overrides):
         num_chapters=3,
         word_number=1500,
         writing_config={"structure": "日常流", "core_genre": "玄幻"},
+        story_shape="final",
+        total_chapters_target=None,
     )
     base.update(overrides)
     return SimpleNamespace(**base)

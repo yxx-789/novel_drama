@@ -137,6 +137,8 @@ def test_prompt_placeholders_all_formatable():
         "plot_architecture",
         # 「参考当前版本」段（V3 P2 优化重新生成，生成服务 format 时传入）
         "current_content_section",
+        # 目录形态指令块（V3 P2 形态闭环，generate_directory format 时传入）
+        "shape_instruction",
     }
     prompts = {
         "core_seed_prompt": core_seed_prompt,

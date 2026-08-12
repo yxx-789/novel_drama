@@ -193,7 +193,7 @@ def _directory_shape_instruction(project: Project, end_num: int | None = None) -
             )
         m_text = f"（全书规划约 {m} 章）" if m else ""
         end_line = (
-            f"全书终点章（第 {m} 章）按结局章设计。" if m else "全书终点章按结局章设计。"
+            f"全书终点章（第 {m} 章）按结局章写法。" if m else "全书终点章按结局章写法。"
         )
         return (
             f"【形态约束：连载开篇】\n"

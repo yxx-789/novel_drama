@@ -494,4 +494,4 @@ class TestDirectoryShapeInstruction:
                 architecture_text="架构", llm_config=_LLM))
         prompt = adapter.prompts[0]
         assert "None" not in prompt
-        assert "全书终点章按结局章设计" in prompt
+        assert "全书终点章按结局章写法" in prompt

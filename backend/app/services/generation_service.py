@@ -170,6 +170,42 @@ def _architecture_shape_instruction(project: Project) -> str:
     )
 
 
+def _directory_shape_instruction(project: Project, end_num: int | None = None) -> str:
+    """构造目录生成的形态约束指令块。
+
+    end_num 为本次生成的最后一章（续写追加时传入）：open 模式下
+    end_num >= M 按全书终点（结局章）设计，否则阶段收束 + 留钩子。
+    """
+    n = project.num_chapters or 10
+    if project.story_shape == "open":
+        m = project.total_chapters_target
+        if end_num and m and end_num >= m:
+            return (
+                f"【形态约束：连载开篇·全书终点】\n"
+                f"本次续写至第 {m} 章即全书终点：第 {m} 章按结局章设计，"
+                f"主线闭合、情感收束、所有伏笔回收。"
+            )
+        if end_num:
+            return (
+                f"【形态约束：连载开篇·阶段收束】\n"
+                f"本次续写至第 {end_num} 章，为阶段性收束："
+                f"第 {end_num} 章需留下 1-3 个续写钩子（未解之谜 / 新线索 / 暗线推进）。"
+            )
+        m_text = f"（全书规划约 {m} 章）" if m else ""
+        end_line = (
+            f"全书终点章（第 {m} 章）按结局章设计。" if m else "全书终点章按结局章设计。"
+        )
+        return (
+            f"【形态约束：连载开篇】\n"
+            f"第 {n} 章为阶段性收束，明确留下 1-3 个续写钩子（未解之谜 / 新线索 / 暗线推进）{m_text}；"
+            f"{end_line}"
+        )
+    return (
+        f"【形态约束：短篇完结】\n"
+        f"第 {n} 章必须为结局章——主线闭合、情感收束，并在本章简述中列出伏笔回收清单。"
+    )
+
+
 async def generate_architecture(
     project: Project,
     user_guidance: str = "",
@@ -286,6 +322,7 @@ async def generate_directory(
         number_of_chapters=project.num_chapters or 10,
         writing_context=writing_context,
         creative_intent=creative_intent,
+        shape_instruction=_directory_shape_instruction(project),
         structure_blueprint_guidance=guidance["blueprint"],
         current_content_section=current_section,
     )

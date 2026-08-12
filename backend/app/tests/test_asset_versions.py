@@ -463,3 +463,35 @@ class TestArchitectureShapeInstruction:
         plot_prompt = adapter.prompts[3]
         assert "None" not in plot_prompt
         assert "全书终点章按结局章写法" in plot_prompt
+
+
+class TestDirectoryShapeInstruction:
+    def test_directory_final_injects_final_chapter_requirement(self):
+        adapter = CapturingAdapter(_DIRECTORY)
+        with patch("app.services.generation_service._make_adapter", return_value=adapter):
+            _run(generate_directory(
+                _project(story_shape="final"), architecture_text="架构", llm_config=_LLM))
+        prompt = adapter.prompts[0]
+        assert "结局章" in prompt
+        assert "伏笔回收清单" in prompt
+
+    def test_directory_open_injects_hooks(self):
+        adapter = CapturingAdapter(_DIRECTORY)
+        with patch("app.services.generation_service._make_adapter", return_value=adapter):
+            _run(generate_directory(
+                _project(story_shape="open", total_chapters_target=30),
+                architecture_text="架构", llm_config=_LLM))
+        prompt = adapter.prompts[0]
+        assert "阶段性收束" in prompt
+        assert "续写钩子" in prompt
+        assert "全书终点" in prompt
+
+    def test_directory_open_without_m_renders_gracefully(self):
+        adapter = CapturingAdapter(_DIRECTORY)
+        with patch("app.services.generation_service._make_adapter", return_value=adapter):
+            _run(generate_directory(
+                _project(story_shape="open", total_chapters_target=None),
+                architecture_text="架构", llm_config=_LLM))
+        prompt = adapter.prompts[0]
+        assert "None" not in prompt
+        assert "全书终点章按结局章设计" in prompt

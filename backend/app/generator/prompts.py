@@ -321,6 +321,7 @@ chapter_blueprint_prompt = """\
 {creative_intent}
 
 设计{number_of_chapters}章的节奏分布：
+{shape_instruction}
 {structure_blueprint_guidance}
 
 输出格式示例：

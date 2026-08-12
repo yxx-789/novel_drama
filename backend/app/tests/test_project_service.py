@@ -1,15 +1,17 @@
 # test_project_service.py
 # -*- coding: utf-8 -*-
-"""create_project 的写作配置校验（Task 2：创建时硬冲突拒绝 / 软警告不阻断）。"""
+"""create_project 的写作配置校验（Task 2：创建时硬冲突拒绝 / 软警告不阻断）
++ update_project 的形态规则（Task 2：M 锁定不可改、open→final 清 M、final→open 补 M）。"""
 
 import asyncio
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
 from app.generator.block_library import DEFAULT_RECIPES, ConfigHardConflictError
-from app.schemas.project import ProjectCreate
-from app.services.project_service import create_project
+from app.schemas.project import ProjectCreate, ProjectUpdate
+from app.services.project_service import create_project, update_project
 
 
 class FakeDB:
@@ -32,7 +34,7 @@ class FakeDB:
 
 def _run_create(config: dict | None):
     db = FakeDB()
-    project_in = ProjectCreate(name="测试项目", writing_config=config)
+    project_in = ProjectCreate(name="测试项目", story_shape="final", writing_config=config)
     result = asyncio.run(create_project(db, project_in, uuid.uuid4()))
     return db, result
 
@@ -43,6 +45,7 @@ def test_create_project_rejects_hard_conflict():
     db = FakeDB()
     project_in = ProjectCreate(
         name="冲突项目",
+        story_shape="final",
         writing_config={"cast_scale": "独角戏", "structure": "群像交织"},
     )
     with pytest.raises(ConfigHardConflictError) as excinfo:
@@ -58,6 +61,7 @@ def test_create_project_rejects_genre_x_background_hard():
     db = FakeDB()
     project_in = ProjectCreate(
         name="历史都市",
+        story_shape="final",
         writing_config={"core_genre": "历史", "background": "都市霓虹"},
     )
     with pytest.raises(ConfigHardConflictError) as excinfo:
@@ -110,3 +114,52 @@ def test_create_project_plot_direction_soft_warning_does_not_block():
     )
     assert db.committed is True
     assert result is not None
+
+
+# ---------- update_project 形态规则（Task 2：M 锁定 / 形态转换） ----------
+def _run_update(project, update_in):
+    db = FakeDB()
+    result = asyncio.run(update_project(db, project, update_in))
+    return db, result
+
+
+def test_update_rejects_changing_m():
+    project = SimpleNamespace(
+        name="p", story_shape="open", total_chapters_target=30, num_chapters=20,
+        word_number=1500, topic=None, genre=None, status="draft",
+        writing_config=None, owner_id="u1", id="p1",
+    )
+    with pytest.raises(ValueError, match="不可修改"):
+        _run_update(project, ProjectUpdate(total_chapters_target=99))
+
+
+def test_update_open_to_final_clears_m():
+    project = SimpleNamespace(
+        name="p", story_shape="open", total_chapters_target=30, num_chapters=20,
+        word_number=1500, topic=None, genre=None, status="draft",
+        writing_config=None, owner_id="u1", id="p1",
+    )
+    _, result = _run_update(project, ProjectUpdate(story_shape="final"))
+    assert result.story_shape == "final"
+    assert result.total_chapters_target is None
+
+
+def test_update_final_to_open_requires_m():
+    project = SimpleNamespace(
+        name="p", story_shape="final", total_chapters_target=None, num_chapters=20,
+        word_number=1500, topic=None, genre=None, status="draft",
+        writing_config=None, owner_id="u1", id="p1",
+    )
+    with pytest.raises(ValueError, match="全书目标总章数"):
+        _run_update(project, ProjectUpdate(story_shape="open"))
+
+
+def test_update_final_to_open_with_m_ok():
+    project = SimpleNamespace(
+        name="p", story_shape="final", total_chapters_target=None, num_chapters=20,
+        word_number=1500, topic=None, genre=None, status="draft",
+        writing_config=None, owner_id="u1", id="p1",
+    )
+    _, result = _run_update(project, ProjectUpdate(story_shape="open", total_chapters_target=40))
+    assert result.story_shape == "open"
+    assert result.total_chapters_target == 40

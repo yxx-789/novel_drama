@@ -50,6 +50,8 @@ async def create_project(
         genre=project_in.genre,
         num_chapters=project_in.num_chapters,
         word_number=project_in.word_number,
+        story_shape=project_in.story_shape,
+        total_chapters_target=project_in.total_chapters_target,
         writing_config=config,
         owner_id=str(owner_id),
     )
@@ -89,6 +91,26 @@ async def update_project(
     project_in: ProjectUpdate,
 ) -> Project:
     update_data = project_in.model_dump(exclude_unset=True)
+
+    # 全书目标章数创建后不可修改：已锁定 M 的项目，传入了不同的 M → 拒绝
+    if "total_chapters_target" in update_data:
+        new_m = update_data["total_chapters_target"]
+        if project.total_chapters_target is not None and new_m != project.total_chapters_target:
+            raise ValueError("全书目标章数创建后不可修改")
+        if new_m is not None and not (10 <= new_m <= 1000):
+            raise ValueError("全书目标总章数需在 10~1000 之间")
+
+    # 形态切换规则：open→final 自动清空 M；final→open 必须补传 M
+    new_shape = update_data.get("story_shape")
+    if new_shape is not None and new_shape != project.story_shape:
+        if new_shape not in ("final", "open"):
+            raise ValueError("故事形态取值非法：final / open")
+        if new_shape == "final":
+            update_data["total_chapters_target"] = None
+        elif project.story_shape == "final":
+            if not update_data.get("total_chapters_target"):
+                raise ValueError("切换为连载开篇时必须提供全书目标总章数")
+
     for field, value in update_data.items():
         setattr(project, field, value)
     await db.commit()

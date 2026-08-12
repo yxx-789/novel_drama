@@ -41,8 +41,13 @@ async def create_new_project(
     try:
         project = await create_project(db, project_in, current_user.id)
     except ConfigHardConflictError as e:
-        # 写作配置存在硬冲突 → 400，detail 即服务层给出的冲突文案；
-        # 其它 ValueError 不在此捕获（让其正常 500，避免把非冲突错误误标为 400）
+        # 写作配置存在硬冲突 → 400，detail 即服务层给出的冲突文案
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except ValueError as e:
+        # 形态等防御性 ValueError → 400（pydantic 形态校验已在 schema 层返回 422）
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
@@ -185,7 +190,14 @@ async def update_existing_project(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="项目不存在或无权限访问",
         )
-    updated = await update_project(db, project, project_in)
+    try:
+        updated = await update_project(db, project, project_in)
+    except ValueError as e:
+        # M 锁定 / 形态转换规则违反 → 400
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     return updated
 
 

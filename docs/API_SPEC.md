@@ -178,9 +178,14 @@ Authorization: Bearer <token>
   "topic": "修真世界",
   "genre": "玄幻",
   "num_chapters": 50,
-  "word_number": 3000
+  "word_number": 3000,
+  "story_shape": "final"
 }
 ```
+
+- `story_shape` **必填**（final / open），缺失或取值非法 → 422。
+- `story_shape='open'`（连载开篇）时 `total_chapters_target` **必填**：10 ≤ M ≤ 1000 且 M > num_chapters，违反 → 422。
+- `story_shape='final'`（短篇完结）时不允许携带 `total_chapters_target`（携带 → 422）。
 
 响应：
 ```json
@@ -191,6 +196,8 @@ Authorization: Bearer <token>
   "genre": "玄幻",
   "num_chapters": 50,
   "word_number": 3000,
+  "story_shape": "final",
+  "total_chapters_target": null,
   "owner_id": "7d1f7bc7-7c75-4ed4-a55f-0c2a9963fd18",
   "status": "draft",
   "created_at": "2026-05-05T11:37:45.888222Z",
@@ -214,6 +221,8 @@ Authorization: Bearer <token>
     "genre": "玄幻",
     "num_chapters": 50,
     "word_number": 3000,
+    "story_shape": "final",
+    "total_chapters_target": null,
     "owner_id": "7d1f7bc7-7c75-4ed4-a55f-0c2a9963fd18",
     "status": "draft",
     "created_at": "2026-05-05T11:37:45.888222Z",
@@ -221,6 +230,22 @@ Authorization: Bearer <token>
   }
 ]
 ```
+
+更新项目：
+```http
+PUT /api/projects/{id}
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "name": "测试小说（改）",
+  "story_shape": "open",
+  "total_chapters_target": 200
+}
+```
+
+- `total_chapters_target` **创建后不可修改**：已锁定 M 的项目传入不同 M → 400「全书目标章数创建后不可修改」。
+- `story_shape` 可修改：`open→final` 自动清空 M（服务端将 M 置 NULL）；`final→open` 必须补传 `total_chapters_target`（缺失 → 400）。
 
 > 所有项目接口均通过 `get_current_user` 依赖验证 JWT，并严格按 `owner_id` 隔离数据。非 owner 访问返回 404。
 
@@ -233,6 +258,7 @@ Authorization: Bearer <token>
 | POST | /projects/{id}/generate/chapter/{num} | 生成章节（真实 LLM） | 已实现 |
 | POST | /projects/{id}/generate/drama-plan | 生成短剧改编计划（任务桩） | 已实现 |
 | POST | /projects/{id}/generate/drama-episode/{num} | 生成短剧单集脚本（支持 chapter_nums 选择） | 已实现 |
+| POST | /projects/{id}/generate/continue-writing | 续写（open 形态）：body `{"chapters": k}`，追加目录 + 增量正文 | 已实现 |
 | POST | /projects/{id}/finalize/chapter/{num} | 定稿章节 | 待实现 |
 | POST | /projects/{id}/generate/batch | 批量生成 | 待实现 |
 
@@ -251,6 +277,41 @@ Authorization: Bearer <token>
 
 - `guidance` 可选；超过 2000 字返回 400。未传 body 时按空提示词处理，行为与旧版一致。
 - 提交时服务端自动从资产表取当前版本全文作为快照，连同 `guidance` 一并写入 `task.params.user_guidance` / `task.params.current_content`，供 worker 做「优化重新生成」与版本历史记录。
+
+续写（open 形态，追加 N+1 ~ N+k 章）：
+```http
+POST /api/projects/{id}/generate/continue-writing
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "chapters": 10
+}
+```
+
+- 仅 `story_shape='open'` 可续写，非 open → 400「仅连载开篇（open）形态项目可续写」。
+- `chapters`（k）必须为正整数，k < 1 → 422。
+- 已锁定全书目标 M 且 `num_chapters + k > M` → 422（提示剩余可续写章数）。
+- 任务 `task_type='continue_writing'`：三步串行——更新 num_chapters → 追加目录（`_ensure_chapters(skip_existing=True)`，不覆盖已有定稿）→ 增量正文（已有 draft 章节自动跳过）；成功返回 TaskOut，前台轮询 `GET /tasks/{id}`。
+
+响应（创建任务）：
+```json
+{
+  "id": "t1a2b3c4-...",
+  "project_id": "a4c0e0e7-...",
+  "task_type": "continue_writing",
+  "status": "pending",
+  "params": {
+    "project_id": "a4c0e0e7-...",
+    "chapters": 10
+  },
+  "result": null,
+  "progress": 0,
+  "error_msg": null,
+  "created_at": "2026-08-12T00:00:00Z",
+  "updated_at": "2026-08-12T00:00:00Z"
+}
+```
 
 响应（创建任务）：
 ```json

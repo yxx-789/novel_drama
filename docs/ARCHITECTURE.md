@@ -223,6 +223,8 @@ MVP 阶段取消与重试通过 API 触发：
 
 > P3-B 记忆闭环（章节生成路径）：写前组装「已冻结 arc 摘要 + 全书脉络（L3，仅伏笔提醒命中时）+ 伏笔/副线提醒 + known_by 信息约束」注入 `world_state_summary`；写后台账合并（无变化不写回）+ arc 边界冻结 + 全书结束合成 L3（批量结束 / 单章最后一章各一次）；全部失败安全且零新增每章 LLM 调用（L2/L3 摊薄 1/N）。
 
+> 故事形态（final/open）与续写闭环：architecture / directory 生成按 `project.story_shape` 注入形态指令——`_scope_statement`（章节范围声明）、`_architecture_shape_instruction`（final 要求结局收束 / open 阶段收束）、`_directory_shape_instruction`（第 N 章为结局章或阶段收束章）。`continue_writing` 任务三步串行：① 更新 `num_chapters`（+k）→ ② `generate_directory_append` 追加目录（仅生成 N+1 ~ N+k 章，`_ensure_chapters(skip_existing=True)` 跳过已有行、保护定稿标题/大纲，章节范围硬校验后落库并写版本历史）→ ③ `_batch_generate_drafts` 增量正文；**批量正文增量语义**：已有 `draft` 的章节自动跳过，只补生成缺失草稿的章节（续写与既有批量生成共用该语义），`num_chapters + k ≤ total_chapters_target(M)` 由路由/任务双重校验。
+
 ### 5.2 短剧改编流程
 
 ```

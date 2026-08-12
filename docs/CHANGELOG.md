@@ -2,6 +2,19 @@
 
 ## [未发布]
 
+### 2026-08-12：故事形态前置收敛 + 续写闭环
+
+- **故事形态（final / open）前置收敛**
+  - `projects` 表新增 `story_shape`（VARCHAR(20) NOT NULL，`'final'` 短篇完结 / `'open'` 连载开篇）：创建项目必选；允许修改（`open→final` 自动清空 M、`final→open` 必须补传 M）；存量回填 `'open'/NULL`（Alembic migration `e88cba7d9f98_add_story_shape_columns.py`）
+  - `projects` 表新增 `total_chapters_target`（INTEGER NULL，全书目标总章数 M）：open 必填，10 ≤ M ≤ 1000 且 M > num_chapters；**创建后不可修改**（PUT 传入不同 M → 400「全书目标章数创建后不可修改」）；final 恒为 NULL
+  - 创建校验：`story_shape` 缺失 / 取值非法 → 422；open 缺 M / 超范围 / M ≤ num_chapters → 422；final 携带 M → 422
+- **续写闭环（continue_writing 任务，open 形态）**
+  - 新增 `POST /api/projects/{id}/generate/continue-writing`：body `{"chapters": k}`；非 open → 400，k < 1 → 422，已锁定 M 且 N+k > M → 422（提示剩余可续写章数）；成功返回 TaskOut
+  - `run_continue_writing_task` 三步串行：① 更新 `num_chapters`（+k）→ ② `generate_directory_append` 追加目录（只生成 N+1 ~ N+k 章，`_ensure_chapters(skip_existing=True)` 不覆盖已有定稿，章节范围硬校验后落库，写入版本历史 trigger=generate/guidance=continue_writing）→ ③ `_batch_generate_drafts` 增量正文
+  - **批量正文增量语义**：已有 `draft` 的章节自动跳过，只补生成缺失草稿的新章节；续写与既有批量生成共用该语义
+  - 架构/目录生成按 `story_shape` 注入形态指令：`_scope_statement`（章节范围声明）/ `_architecture_shape_instruction`（final 收束结局、open 阶段收束）/ `_directory_shape_instruction`（第 N 章为结局章或阶段收束章）
+  - 前端：创建表单形态单选（open 展开 M 输入 + 锁定提示）、设置页形态可改（M 只读锁定）、目录 Tab 续写入口（弹窗 k 校验 + 轮询）；`frontend/src/api/project.ts` 新增 `generateContinueWriting`
+
 ### 优化重新生成：前端版本历史 + 优化提示词组件（Task 7-9）
 
 - 新增 `frontend/src/components/GuidancePanel.tsx`：「优化提示词」面板（textarea + 「带提示词生成{资产}」按钮），提交时提示将基于当前资产全文 + 提示词重新生成

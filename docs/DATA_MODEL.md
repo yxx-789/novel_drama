@@ -56,8 +56,10 @@
 | name | VARCHAR(255) | NOT NULL | 项目名称 |
 | topic | TEXT | | 小说主题 |
 | genre | VARCHAR(100) | | 小说类型 |
-| num_chapters | INTEGER | DEFAULT 0 | 计划章节数 |
+| num_chapters | INTEGER | DEFAULT 0 | 当前章节数（续写时随追加递增） |
 | word_number | INTEGER | DEFAULT 0 | 计划每章字数 |
+| story_shape | VARCHAR(20) | NOT NULL | `'final'` 短篇完结 / `'open'` 连载开篇；创建必选；允许修改（形态转换见 API 说明） |
+| total_chapters_target | INTEGER | NULL；open 必填 | 全书目标总章数 M；10~1000 且 > num_chapters；创建后不可修改；final 恒为 NULL |
 | owner_id | UUID | FK → users.id, NOT NULL | 项目创建者 |
 | status | VARCHAR(20) | DEFAULT 'draft' | draft / generating / completed |
 | created_at | TIMESTAMPTZ | server_default=now() | |
@@ -68,6 +70,7 @@
 **说明**：
 - MVP 阶段单人使用，owner_id 即为唯一用户
 - Phase 2 引入 project_members 后才需要联表查询权限
+- `story_shape` / `total_chapters_target`（故事形态前置收敛）：`'open'`（连载开篇）创建时必须提供全书目标总章数 M（10 ≤ M ≤ 1000 且 M > num_chapters），用于锁定续写上限（`num_chapters + k ≤ M`）；`'final'`（短篇完结）M 恒为 NULL。M 创建后不可修改；存量项目回填 `'open'/NULL`（迁移 `e88cba7d9f98`）
 
 ---
 
@@ -184,6 +187,7 @@
 | directory | 生成章节目录 |
 | chapter | 生成单章草稿 |
 | batch_chapters | 批量生成章节 |
+| continue_writing | 续写（open 形态）：更新 num_chapters → 追加目录 → 增量正文，三步串行一个任务 |
 | drama_plan | 生成短剧改编计划 |
 | drama_episode | 生成分集脚本 |
 | drama_batch | 批量生成短剧脚本 |
@@ -302,6 +306,7 @@ chat_sessions ||--o{ chat_messages : contains
 | 2026-05-10 | users 表新增 LLM 配置字段 | `llm_api_key_encrypted` / `llm_base_url` / `llm_model` / `llm_config_updated_at` |
 | 2026-08-06 | V3 P3-B 闭环 | `arc_summaries.book_summary` 由单章最后一章合成并闭环注入（伏笔提醒命中时）；`foreshadowing.known_by` 由写前【信息约束】消费（每章最近 5 条 + 提醒命中） |
 | 2026-08-11 | 优化重新生成 + 版本历史 | 新增 `asset_versions` 版本历史表（仅 architecture/directory 写入，trigger_type=generate/manual/rollback）；`project_assets.version` 作为当前版本号，回滚续 +1 |
+| 2026-08-12 | 故事形态前置收敛 | projects 表新增 `story_shape`（final/open，创建必选、允许修改）与 `total_chapters_target`（全书目标总章数 M，open 必填、创建后锁定）；存量回填 `'open'/NULL`（迁移 `e88cba7d9f98`）；tasks 新增 `continue_writing` 类型 |
 
 ### 扁平化设计决策（D005）
 

@@ -23,7 +23,8 @@ apiClient.interceptors.response.use(
     const detail = error.response?.data?.detail
     if (status === 401) {
       localStorage.removeItem('token')
-      window.location.href = '/login'
+      // BASE_URL 生产为 /novel_drama/，dev 为 /，整页跳转带上子路径前缀
+      window.location.href = import.meta.env.BASE_URL + 'login'
       useToastStore.getState().addToast('登录已过期，请重新登录', 'warning')
     } else if (status === 403) {
       useToastStore.getState().addToast('无权访问该资源', 'error')

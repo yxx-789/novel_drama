@@ -2,6 +2,14 @@
 
 ## [未发布]
 
+### 2026-08-13：生产子路径部署适配（/novel_drama/）
+
+- **问题**：线上部署在 `http://47.85.52.9/novel_drama/` 子路径（nginx 反代 + web 容器 127.0.0.1:8080），但前端 build 产物资源路径为根绝对路径 `/assets/...` → 浏览器请求落到个人主页 404 → 页面空白
+- **vite base**：`frontend/vite.config.ts` 改为函数式 `defineConfig(({ command }) => ...)`，`base: command === 'build' ? '/novel_drama/' : '/'`——build 时静态资源加 `/novel_drama/` 前缀，dev 保持根路径不受影响
+- **路由 basename**：`frontend/src/App.tsx` `<BrowserRouter basename={import.meta.env.PROD ? '/novel_drama' : ''}>`
+- **401 跳转**：`frontend/src/api/client.ts` 登录过期整页跳转改用 `import.meta.env.BASE_URL + 'login'`（生产带子路径前缀）
+- 服务器 web 容器重建后验证：HTML 资源路径、JS/CSS 200、SPA 深链接 fallback、登录 API 全部正常
+
 ### 2026-08-12：续写只追加目录（正文移交章节页批量生成）
 
 - **行为修订**：`continue_writing` 任务由「目录 + 正文」三步串行改为**只追加目录**——更新 `num_chapters` → `generate_directory_append` 追加 N+1 ~ N+k 章（`_ensure_chapters(skip_existing=True)` + 目录资产累积落库）→ 任务完成

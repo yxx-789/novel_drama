@@ -18,7 +18,8 @@ function RequireAuth() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      {/* 生产部署在 /novel_drama/ 子路径，路由加 basename；dev 保持根路径 */}
+      <BrowserRouter basename={import.meta.env.PROD ? '/novel_drama' : ''}>
         <Toast />
         <Routes>
         <Route path="/login" element={<Login />} />

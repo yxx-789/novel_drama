@@ -147,18 +147,39 @@ def _scope_statement(project: Project) -> str:
     return f"约 {n} 章（每章 {w} 字），本书 {n} 章内完结"
 
 
-def _architecture_shape_instruction(project: Project) -> str:
-    """构造情节架构生成的形态约束指令块。"""
+def _architecture_shape_instruction(project: Project, emphasize_coverage: bool = False) -> str:
+    """构造情节架构生成的形态约束指令块。
+
+    emphasize_coverage=True：用于卷目覆盖校验失败后的重试——
+    明确要求补全覆盖到全书终点 M 的全部卷目区间。
+    """
     n = project.num_chapters or 10
     if project.story_shape == "open":
         m = project.total_chapters_target
         m_text = f"（全书规划约 {m} 章）" if m else ""
         map_line = f"卷目划分总和约 {m} 章" if m else "卷目划分按全书规模自由设计"
         end_line = f"第 {m} 章为全书终点（结局章写法）：主线闭合、伏笔全回收。" if m else "全书终点章按结局章写法：主线闭合、伏笔全回收。"
+        if emphasize_coverage and m:
+            coverage_line = (
+                f"【注意】上次卷目划分未覆盖到第 {m} 章，本次必须完整列出第 1 章至第 {m} 章的"
+                f"全部卷目区间，逐卷补全，不得遗漏后续卷。"
+            )
+        elif m:
+            coverage_line = (
+                f"- 必须输出「全书卷目划分」小节：卷目区间首尾衔接、连续覆盖第 1 章至第 {m} 章，"
+                f"不得省略或只写当前卷；每卷一行（卷名：第a-b章——卷主题/核心冲突/卷末钩子），"
+                f"当前卷（前 {n} 章所在卷）详写节奏规划，其余卷提纲即可。"
+            )
+        else:
+            coverage_line = (
+                f"- 必须输出「全书卷目划分」小节：卷目区间首尾衔接、按全书规模连续覆盖；"
+                f"每卷一行（卷名：第a-b章——卷主题/核心冲突/卷末钩子），当前卷详写节奏规划，其余卷提纲即可。"
+            )
         return (
             f"【形态约束：连载开篇】\n"
             f"本书为连载开篇，当前阶段为前 {n} 章（全书第一阶段）{m_text}。\n"
             f"- 请按全书规模设计版图：{map_line}，主线按全书长度铺排，不在 {n} 章内强行完结。\n"
+            f"{coverage_line}\n"
             f"- 第 {n} 章为阶段收束点，预留 1-3 个续写钩子（未解之谜 / 新线索 / 暗线推进）。\n"
             f"- {end_line}"
         )
@@ -169,6 +190,26 @@ def _architecture_shape_instruction(project: Project) -> str:
         f"- 主线在 {n} 章内走完，所有伏笔在 {n} 章内回收。\n"
         f"- 第 {n} 章为全书结局章：情感与剧情双收束。"
     )
+
+
+_VOLUME_RANGE_RE = re.compile(r"第\s*(\d{1,4})\s*(?:[-~至到—–])\s*(\d{1,4})\s*章")
+
+
+def _volume_coverage_check(text: str, total_target: int | None) -> bool:
+    """轻量校验：情节架构文本的卷目/章节区间是否覆盖到全书目标章数 M。
+
+    - total_target 为空（final 形态 / 存量 open 无 M）→ 恒 True，不做约束
+    - 提取所有「第a-b章」区间（支持 - ~ 至 到 — – 分隔符），取最大上界；上界 >= M 即覆盖
+    - 无区间覆盖时兜底：文本中出现「第 M 章」字样（如"第 100 章为全书终点"）也视为覆盖
+    """
+    if not total_target:
+        return True
+    max_end = 0
+    for m in _VOLUME_RANGE_RE.finditer(text):
+        max_end = max(max_end, int(m.group(2)))
+    if max_end >= total_target:
+        return True
+    return re.search(rf"第\s*{total_target}\s*章(?!\d)", text) is not None
 
 
 def _directory_shape_instruction(project: Project, end_num: int | None = None) -> str:
@@ -275,6 +316,29 @@ async def generate_architecture(
         shape_instruction=_architecture_shape_instruction(project),
     )
     plot_architecture = await _invoke_with_retry(adapter, prompt)
+
+    # 卷目覆盖校验（open 且有全书目标 M）：卷目区间未覆盖到 M → 强化指令重试一次
+    if (
+        project.story_shape == "open"
+        and project.total_chapters_target
+        and not _volume_coverage_check(plot_architecture, project.total_chapters_target)
+    ):
+        logger.warning(
+            f"情节架构卷目划分未覆盖到全书终点第 {project.total_chapters_target} 章，强化指令重试一次"
+        )
+        retry_prompt = plot_architecture_prompt.format(
+            user_guidance=user_guidance or "",
+            core_seed=core_seed,
+            character_dynamics=character_dynamics,
+            world_building=world_building,
+            writing_context=writing_context,
+            creative_intent=creative_intent,
+            current_content_section=current_section,
+            shape_instruction=_architecture_shape_instruction(project, emphasize_coverage=True),
+        )
+        plot_architecture = await _invoke_with_retry(adapter, retry_prompt)
+        if not _volume_coverage_check(plot_architecture, project.total_chapters_target):
+            logger.warning("重试后卷目划分仍未覆盖全书终点，按本次输出继续")
     logger.info("Architecture step 4/5: Plot architecture generated")
 
     # Combine architecture text

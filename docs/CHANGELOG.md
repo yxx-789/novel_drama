@@ -2,6 +2,13 @@
 
 ## [未发布]
 
+### 2026-08-12：连载架构卷目覆盖（全书版图铺排 + 校验重试）
+
+- **问题**：open 形态要求"全书卷目划分总和 = M"，但 `plot_architecture_prompt` 只有指令、无结构约束，LLM 常只详写当前卷、省略后续卷 → 架构缺失卷二/卷三…规划，续写缺少方向锚定
+- **prompt 强化**：`plot_architecture_prompt` 与 `_architecture_shape_instruction`（open 分支）强制输出「全书卷目划分」小节——格式 `卷名：第a-b章——卷主题/核心冲突/卷末钩子`，区间首尾衔接、连续覆盖第 1 章至第 M 章（无 M 存量项目按全书规模自由），当前卷详写节奏、后续卷提纲
+- **卷目覆盖校验 + 重试**：`generate_architecture` plot 步骤后新增 `_volume_coverage_check`（提取 `第a-b章` 区间取最大上界，兼容 `- ~ 至 到 — –` 分隔符；无区间时兜底识别"第 M 章"字样）：open 且 M 存在、卷目未覆盖到 M → 以 `emphasize_coverage` 强化指令重试一次；仍不覆盖 → 记录 warning 按输出继续（架构内容可用性优先，不阻断生成）
+- final 形态 / 无 M 项目不做该校验；前端无改动
+
 ### 2026-08-12：续写闭环修复（评审 F1/F2）
 
 - **F1 续写目录资产累积落库**：`run_continue_writing_task` 中 directory 资产不再被 append chunk 整体覆盖——`_ensure_chapters` 先于 `_save_asset`（任一失败点重试自愈：ensure 失败 → 资产未动 → 重试从完整旧目录推导起始章；save 失败 → 章节行已建 → `skip_existing` 跳过 + 资产重新累积），且保存内容改为「既有定稿目录 + 本次新增片段」的累积文本

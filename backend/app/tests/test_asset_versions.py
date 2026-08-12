@@ -455,3 +455,11 @@ class TestArchitectureShapeInstruction:
         assert "前 3 章" in plot_prompt
         assert "续写钩子" in plot_prompt
         assert "第 30 章为全书终点" in plot_prompt
+
+    def test_architecture_open_without_m_renders_gracefully(self):
+        adapter = CapturingAdapter()
+        with patch("app.services.generation_service._make_adapter", return_value=adapter):
+            _run(generate_architecture(_project(story_shape="open", total_chapters_target=None), llm_config=_LLM))
+        plot_prompt = adapter.prompts[3]
+        assert "None" not in plot_prompt
+        assert "全书终点章按结局章写法" in plot_prompt

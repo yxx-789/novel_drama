@@ -152,13 +152,14 @@ def _architecture_shape_instruction(project: Project) -> str:
     if project.story_shape == "open":
         m = project.total_chapters_target
         m_text = f"（全书规划约 {m} 章）" if m else ""
+        map_line = f"卷目划分总和约 {m} 章" if m else "卷目划分按全书规模自由设计"
+        end_line = f"第 {m} 章为全书终点（结局章写法）：主线闭合、伏笔全回收。" if m else "全书终点章按结局章写法：主线闭合、伏笔全回收。"
         return (
             f"【形态约束：连载开篇】\n"
             f"本书为连载开篇，当前阶段为前 {n} 章（全书第一阶段）{m_text}。\n"
-            f"- 请按全书规模设计版图：卷目划分总和约 {m if m else '全书'} 章，"
-            f"主线按全书长度铺排，不在 {n} 章内强行完结。\n"
+            f"- 请按全书规模设计版图：{map_line}，主线按全书长度铺排，不在 {n} 章内强行完结。\n"
             f"- 第 {n} 章为阶段收束点，预留 1-3 个续写钩子（未解之谜 / 新线索 / 暗线推进）。\n"
-            f"- 第 {m} 章为全书终点（结局章写法）：主线闭合、伏笔全回收。"
+            f"- {end_line}"
         )
     return (
         f"【形态约束：短篇完结】\n"

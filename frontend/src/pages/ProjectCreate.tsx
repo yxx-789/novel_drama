@@ -143,6 +143,8 @@ function ProjectCreate() {
   const [plotDirection, setPlotDirection] = useState('')
   const [numChapters, setNumChapters] = useState(20)
   const [wordNumber, setWordNumber] = useState(3000)
+  const [storyShape, setStoryShape] = useState<'final' | 'open' | ''>('')
+  const [totalChaptersTarget, setTotalChaptersTarget] = useState<number | ''>('')
   const [error, setError] = useState('')
 
   // 写作设置：核心题材 + 其他 6 维
@@ -346,12 +348,29 @@ function ProjectCreate() {
       const confirmed = window.confirm(soft.join('\n\n') + '\n\n是否继续？')
       if (!confirmed) return
     }
+    if (!storyShape) {
+      setError('请选择故事形态（短篇完结 / 连载开篇）')
+      return
+    }
+    if (storyShape === 'open') {
+      const m = Number(totalChaptersTarget)
+      if (!totalChaptersTarget || !Number.isInteger(m) || m < 10 || m > 1000) {
+        setError('全书目标总章数需为 10~1000 的整数')
+        return
+      }
+      if (m <= numChapters) {
+        setError('全书目标总章数必须大于章节数')
+        return
+      }
+    }
     mutation.mutate({
       name,
       topic: topic || undefined,
       genre: coreGenre || undefined,
       num_chapters: numChapters,
       word_number: wordNumber,
+      story_shape: storyShape || undefined,
+      total_chapters_target: storyShape === 'open' ? Number(totalChaptersTarget) || undefined : undefined,
       writing_config: config,
     })
   }
@@ -442,6 +461,47 @@ function ProjectCreate() {
                 />
               </div>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">故事形态</label>
+              <div className="mt-1 space-y-2">
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="storyShape"
+                    checked={storyShape === 'final'}
+                    onChange={() => setStoryShape('final')}
+                    className="accent-indigo-600"
+                  />
+                  <span>短篇完结（{numChapters || 20} 章即全书结局，情节架构在本章数内闭环）</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="storyShape"
+                    checked={storyShape === 'open'}
+                    onChange={() => setStoryShape('open')}
+                    className="accent-indigo-600"
+                  />
+                  <span>连载开篇（先写 {numChapters || 20} 章看反响，第 {numChapters || 20} 章留钩子，后续可续写）</span>
+                </label>
+              </div>
+            </div>
+            {storyShape === 'open' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">全书目标总章数 M</label>
+                <input
+                  type="number"
+                  min={10}
+                  max={1000}
+                  value={totalChaptersTarget}
+                  onChange={(e) => setTotalChaptersTarget(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="例如 60"
+                  className="mt-1 w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                />
+                <p className="mt-1 text-xs text-amber-600">该数字创建后不可修改，请谨慎填写</p>
+              </div>
+            )}
 
             {/* 写作设置折叠区 */}
             <CollapseSection

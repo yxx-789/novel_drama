@@ -145,6 +145,12 @@ def test_create_final_without_m_returns_201(client):
     assert res.json()["total_chapters_target"] is None
 
 
+def test_create_final_with_m_returns_422(client):
+    # final 形态不变量：全书目标总章数必须为 NULL
+    res = client.post("/api/projects", json=_create_payload(story_shape="final", total_chapters_target=5))
+    assert res.status_code == 422, res.text
+
+
 def test_create_open_valid_returns_201(client):
     res = client.post("/api/projects", json=_create_payload(story_shape="open", total_chapters_target=30))
     assert res.status_code == 201, res.text

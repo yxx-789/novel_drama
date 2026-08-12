@@ -23,14 +23,17 @@ class ProjectCreate(ProjectBase):
     def _validate_shape(self):
         if self.story_shape not in SHAPE_VALUES:
             raise ValueError("故事形态取值非法：final（短篇完结）/ open（连载开篇）")
+        m = self.total_chapters_target
         if self.story_shape == "open":
-            m = self.total_chapters_target
             if m is None:
                 raise ValueError("连载开篇必须提供全书目标总章数 total_chapters_target")
             if not (10 <= m <= 1000):
                 raise ValueError("全书目标总章数需在 10~1000 之间")
             if m <= self.num_chapters:
                 raise ValueError("全书目标总章数必须大于当前章节数")
+        elif m is not None:
+            # final 形态不变量：全书目标总章数必须为 NULL
+            raise ValueError("短篇完结形态不支持全书目标总章数")
         return self
 
 

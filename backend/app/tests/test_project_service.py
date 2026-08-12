@@ -163,3 +163,14 @@ def test_update_final_to_open_with_m_ok():
     _, result = _run_update(project, ProjectUpdate(story_shape="open", total_chapters_target=40))
     assert result.story_shape == "open"
     assert result.total_chapters_target == 40
+
+
+def test_update_final_rejects_writing_m():
+    # final 形态不变量：不得写入 M（未切换形态时）
+    project = SimpleNamespace(
+        name="p", story_shape="final", total_chapters_target=None, num_chapters=20,
+        word_number=1500, topic=None, genre=None, status="draft",
+        writing_config=None, owner_id="u1", id="p1",
+    )
+    with pytest.raises(ValueError, match="短篇完结形态不支持"):
+        _run_update(project, ProjectUpdate(total_chapters_target=30))

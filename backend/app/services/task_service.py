@@ -1172,9 +1172,14 @@ async def run_continue_writing_task(task_id: uuid.UUID) -> None:
                     f"续写目录章节范围不匹配：期望 {expected_start}~{project.num_chapters}，"
                     f"实际 {min(new_nums)}~{max(new_nums)}"
                 )
-            await _save_asset(db, str(task.project_id), "directory", directory_text,
-                              trigger_type="generate", guidance="continue_writing")
+            # 先落章节行、再落资产：任一失败点重试均自愈
+            # （ensure 失败 → 资产未动 → 重试从完整旧目录推导 start；
+            #   save 失败 → 行已建 → skip_existing 跳过 + 资产重新累积）
             await _ensure_chapters(db, str(task.project_id), parsed_chapters, skip_existing=True)
+            # 累积落库：既有定稿目录 + 本次新增片段，而非用 append chunk 整体覆盖
+            accumulated = f"{existing_directory}\n\n{directory_text}".strip() if existing_directory else directory_text
+            await _save_asset(db, str(task.project_id), "directory", accumulated,
+                              trigger_type="generate", guidance="continue_writing")
 
             # 3. 增量正文（已有 draft 章节自动跳过）
             await update_task_status(db, task_id, "running", progress=45)

@@ -750,7 +750,7 @@ class TestContinueWritingTask:
              patch("app.services.task_service._get_asset_text", side_effect=["架构", "已有目录", "{}"]), \
              patch("app.services.task_service.generate_directory_append",
                    return_value=("追加目录", parsed)) as mock_append, \
-             patch("app.services.task_service._save_asset"), \
+             patch("app.services.task_service._save_asset") as mock_save, \
              patch("app.services.task_service._batch_generate_drafts") as mock_batch, \
              patch("app.services.task_service._synthesize_book_summary_asset"), \
              patch("app.services.task_service.AsyncSessionLocal", return_value=db):
@@ -762,6 +762,11 @@ class TestContinueWritingTask:
         assert kwargs["existing_directory"] == "已有目录"
         # 3) 增量正文复用批量循环
         assert mock_batch.call_count == 1
+        # 4) F1：目录资产累积落库——content 同时含既有定稿目录与本次新增片段（非整体覆盖）
+        assert mock_save.call_count == 1
+        saved_content = mock_save.call_args.args[3]
+        assert "已有目录" in saved_content and "追加目录" in saved_content
+        assert saved_content == "已有目录\n\n追加目录"
 
     def test_continue_rejects_exceeding_target(self):
         from app.services.task_service import run_continue_writing_task
@@ -820,3 +825,40 @@ class TestContinueWritingTask:
             _run(run_continue_writing_task("t1"))
         assert project.num_chapters == 25
         assert mock_append.call_count == 1
+
+    def test_continue_directory_ensure_chapters_before_save(self):
+        """F1 修复：_ensure_chapters 必须先于 _save_asset，且 directory 资产累积落库。
+
+        顺序保证「任一失败点重试均自愈」：ensure 失败 → 资产未动 → 重试从完整旧目录
+        推导 start；save 失败 → 行已建 → skip_existing 跳过 + 资产重新累积。
+        顺序一旦被回归，此测试即失败。
+        """
+        from app.services.task_service import run_continue_writing_task
+
+        project = _continue_project()
+        task = SimpleNamespace(
+            id="11111111-2222-3333-4444-555555555555",
+            project_id="aaaaaaaa-0000-0000-0000-bbbbbbbbbbbb",
+            params={"project_id": "aaaaaaaa-0000-0000-0000-bbbbbbbbbbbb", "chapters": 5},
+        )
+        parsed = _parsed_1_to_n(25)
+        chapters = _chapter_rows_1_to_n(25)
+        # _ensure_chapters 被 mock：仅消耗 task + 3 个状态 None + 章节列表行
+        db = FakeDB(results=[task] + [None] * 3 + [chapters])
+        calls = []
+        with patch("app.services.task_service.get_project_by_id", return_value=project), \
+             patch("app.services.task_service.resolve_llm_config", return_value={"api_key": "k"}), \
+             patch("app.services.task_service._get_asset_text", side_effect=["架构", "已有目录", "{}"]), \
+             patch("app.services.task_service.generate_directory_append",
+                   return_value=("新目录", parsed)), \
+             patch("app.services.task_service._ensure_chapters",
+                   side_effect=lambda *a, **k: calls.append("ensure")), \
+             patch("app.services.task_service._save_asset",
+                   side_effect=lambda *a, **k: calls.append("save")) as mock_save, \
+             patch("app.services.task_service._batch_generate_drafts"), \
+             patch("app.services.task_service.AsyncSessionLocal", return_value=db):
+            _run(run_continue_writing_task("t1"))
+        # 章节行先落、资产后落：任一失败点重试自愈
+        assert calls == ["ensure", "save"]
+        # 且资产保存的是「既有定稿目录 + 本次新增片段」的累积文本（非整体覆盖）
+        assert mock_save.call_args.args[3] == "已有目录\n\n新目录"

@@ -144,6 +144,21 @@ def test_update_open_to_final_clears_m():
     assert result.total_chapters_target is None
 
 
+def test_update_open_to_final_with_explicit_null_m_ok():
+    # F2：open→final 显式传 total_chapters_target=None（按 spec 清空 M）→ 放行并清空，
+    # 不触发「创建后不可修改」锁定
+    project = SimpleNamespace(
+        name="p", story_shape="open", total_chapters_target=30, num_chapters=20,
+        word_number=1500, topic=None, genre=None, status="draft",
+        writing_config=None, owner_id="u1", id="p1",
+    )
+    _, result = _run_update(
+        project, ProjectUpdate(story_shape="final", total_chapters_target=None)
+    )
+    assert result.story_shape == "final"
+    assert result.total_chapters_target is None
+
+
 def test_update_final_to_open_requires_m():
     project = SimpleNamespace(
         name="p", story_shape="final", total_chapters_target=None, num_chapters=20,

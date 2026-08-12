@@ -97,7 +97,9 @@ async def update_project(
     if "total_chapters_target" in update_data:
         new_m = update_data["total_chapters_target"]
         if project.total_chapters_target is not None and new_m != project.total_chapters_target:
-            raise ValueError("全书目标章数创建后不可修改")
+            # open→final 显式传 null 清空 M：由下方形态切换规则接管，放行
+            if not (new_shape == "final" and new_m is None):
+                raise ValueError("全书目标章数创建后不可修改")
         if new_m is not None and not (10 <= new_m <= 1000):
             raise ValueError("全书目标总章数需在 10~1000 之间")
         # final 形态不变量：不得写入 M（除非正切换到 open，由下方转换规则接管）

@@ -2,6 +2,11 @@
 
 ## [未发布]
 
+### 2026-08-12：续写闭环修复（评审 F1/F2）
+
+- **F1 续写目录资产累积落库**：`run_continue_writing_task` 中 directory 资产不再被 append chunk 整体覆盖——`_ensure_chapters` 先于 `_save_asset`（任一失败点重试自愈：ensure 失败 → 资产未动 → 重试从完整旧目录推导起始章；save 失败 → 章节行已建 → `skip_existing` 跳过 + 资产重新累积），且保存内容改为「既有定稿目录 + 本次新增片段」的累积文本
+- **F2 open→final 显式清空 M 放行**：`update_project` 的 M 锁定检查在「切到 final 且显式传 `total_chapters_target: null`」时放行（由形态切换逻辑清空），不再误报 400「全书目标章数创建后不可修改」；其余改 M 路径仍锁定
+
 ### 2026-08-12：故事形态前置收敛 + 续写闭环
 
 - **故事形态（final / open）前置收敛**

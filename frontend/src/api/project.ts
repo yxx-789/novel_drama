@@ -7,6 +7,8 @@ export interface Project {
   genre: string | null
   num_chapters: number
   word_number: number
+  story_shape: string
+  total_chapters_target: number | null
   owner_id: string
   status: string
   created_at: string
@@ -19,6 +21,8 @@ export interface CreateProjectRequest {
   genre?: string
   num_chapters?: number
   word_number?: number
+  story_shape?: string
+  total_chapters_target?: number
   writing_config?: object
 }
 
@@ -28,6 +32,7 @@ export interface UpdateProjectRequest {
   genre?: string
   num_chapters?: number
   word_number?: number
+  story_shape?: string
   status?: string
 }
 

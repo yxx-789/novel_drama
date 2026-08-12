@@ -43,3 +43,11 @@ export const generateDramaBatch = async (projectId: string): Promise<Task> => {
   const response = await apiClient.post<Task>(`/api/projects/${projectId}/generate/drama-batch`)
   return response.data
 }
+
+export const generateContinueWriting = async (projectId: string, chapters: number): Promise<Task> => {
+  const response = await apiClient.post<Task>(
+    `/api/projects/${projectId}/generate/continue-writing`,
+    { chapters }
+  )
+  return response.data
+}

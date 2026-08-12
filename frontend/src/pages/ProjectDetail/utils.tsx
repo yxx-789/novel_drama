@@ -64,6 +64,11 @@ export const getTaskStepLabel = (type: string, progress: number): string => {
       50: '逐章生成正文中...',
       90: '保存最后章节...',
     },
+    continue_writing: {
+      10: '初始化续写任务...',
+      30: 'LLM 生成续写目录...',
+      70: '保存续写目录...',
+    },
     drama_batch: {
       5: '初始化批量任务...',
       10: '读取剧集与章节列表...',

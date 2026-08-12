@@ -1117,7 +1117,11 @@ async def run_batch_chapters_task(task_id: uuid.UUID) -> None:
 
 
 async def run_continue_writing_task(task_id: uuid.UUID) -> None:
-    """续写闭环：更新 num_chapters → 追加目录 → 增量正文（一个任务串行执行）。"""
+    """续写目录：更新 num_chapters → 追加目录并落库。
+
+    只追加目录（含章节行），不生成正文——正文由用户在章节页
+    「AI 批量生成」（batch_chapters，增量语义）确认目录后单独触发。
+    """
     async with AsyncSessionLocal() as db:
         try:
             task = await get_task_by_id(db, task_id)
@@ -1145,7 +1149,6 @@ async def run_continue_writing_task(task_id: uuid.UUID) -> None:
             await db.commit()
 
             llm_config = await resolve_llm_config(str(project.owner_id), db)
-            structure = _structure_for_project(project)
 
             architecture_text = await _get_asset_text(db, str(task.project_id), "architecture")
             if not architecture_text:
@@ -1181,32 +1184,8 @@ async def run_continue_writing_task(task_id: uuid.UUID) -> None:
             await _save_asset(db, str(task.project_id), "directory", accumulated,
                               trigger_type="generate", guidance="continue_writing")
 
-            # 3. 增量正文（已有 draft 章节自动跳过）
-            await update_task_status(db, task_id, "running", progress=45)
-            world_state_raw = await _get_asset_text(db, str(task.project_id), "world_state")
-            world_state: dict = {}
-            if world_state_raw:
-                try:
-                    world_state = json.loads(world_state_raw)
-                except Exception:
-                    world_state = {}
-            template = get_template(project.genre or "")
-            from app.models.project import Chapter
-            result = await db.execute(
-                select(Chapter).where(
-                    Chapter.project_id == str(task.project_id),
-                ).order_by(Chapter.chapter_num)
-            )
-            chapter_list = list(result.scalars().all())
-            total = len(chapter_list)
-            if total == 0:
-                raise RuntimeError("No chapters found after directory append.")
-
-            await _batch_generate_drafts(
-                db, task_id, project, llm_config, structure,
-                architecture_text, directory_text, world_state, template, chapter_list, total,
-            )
-            logger.info(f"Continue writing task {task_id} completed")
+            await update_task_status(db, task_id, "success", progress=100)
+            logger.info(f"Continue writing task {task_id} completed (directory appended)")
         except Exception as e:
             logger.exception(f"Continue writing task {task_id} failed: {e}")
             try:

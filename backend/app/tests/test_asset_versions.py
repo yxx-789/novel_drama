@@ -742,17 +742,15 @@ class TestContinueWritingTask:
         )
         # existing_directory="已有目录" 无解析章节 → existing_count=0 → 追加目录须覆盖 1~25 章
         parsed = _parsed_1_to_n(25)
-        # 查询消费顺序：task + 28 个 None（状态/ensure_chapters）+ 章节列表行（scalars）
-        chapters = _chapter_rows_1_to_n(25)
-        db = FakeDB(results=[task] + [None] * 28 + [chapters])
+        # 查询消费顺序：task + update(10) + update(30) + ensure 25 章 + update(success)
+        db = FakeDB(results=[task] + [None] * 28)
         with patch("app.services.task_service.get_project_by_id", return_value=project), \
              patch("app.services.task_service.resolve_llm_config", return_value={"api_key": "k"}), \
-             patch("app.services.task_service._get_asset_text", side_effect=["架构", "已有目录", "{}"]), \
+             patch("app.services.task_service._get_asset_text", side_effect=["架构", "已有目录"]), \
              patch("app.services.task_service.generate_directory_append",
                    return_value=("追加目录", parsed)) as mock_append, \
              patch("app.services.task_service._save_asset") as mock_save, \
              patch("app.services.task_service._batch_generate_drafts") as mock_batch, \
-             patch("app.services.task_service._synthesize_book_summary_asset"), \
              patch("app.services.task_service.AsyncSessionLocal", return_value=db):
             _run(run_continue_writing_task("t1"))
         # 1) num_chapters 更新
@@ -760,8 +758,8 @@ class TestContinueWritingTask:
         # 2) 追加目录调用了
         _, kwargs = mock_append.call_args
         assert kwargs["existing_directory"] == "已有目录"
-        # 3) 增量正文复用批量循环
-        assert mock_batch.call_count == 1
+        # 3) 续写只追加目录：正文生成不在任务内（交由章节页 AI 批量生成）
+        assert mock_batch.call_count == 0
         # 4) F1：目录资产累积落库——content 同时含既有定稿目录与本次新增片段（非整体覆盖）
         assert mock_save.call_count == 1
         saved_content = mock_save.call_args.args[3]

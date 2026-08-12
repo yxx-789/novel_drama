@@ -180,7 +180,8 @@ export default function DirectoryTab({
                     <p className="text-sm text-gray-600 mb-3">
                       当前已写 {numChapters} 章
                       {totalChaptersTarget ? `，全书目标 ${totalChaptersTarget} 章（剩余 ${totalChaptersTarget - numChapters} 章）` : ''}
-                      。本次续写将追加目录并生成正文。
+                      。本次续写将追加第 {numChapters + 1}~{numChapters + continueK} 章目录（不生成正文），
+                      确认目录后可到章节页「AI 批量生成」生成正文。
                     </p>
                     <label className="block text-sm font-medium text-gray-700 mb-1">续写章数 k</label>
                     <input

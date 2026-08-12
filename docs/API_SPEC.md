@@ -258,7 +258,7 @@ Authorization: Bearer <token>
 | POST | /projects/{id}/generate/chapter/{num} | 生成章节（真实 LLM） | 已实现 |
 | POST | /projects/{id}/generate/drama-plan | 生成短剧改编计划（任务桩） | 已实现 |
 | POST | /projects/{id}/generate/drama-episode/{num} | 生成短剧单集脚本（支持 chapter_nums 选择） | 已实现 |
-| POST | /projects/{id}/generate/continue-writing | 续写（open 形态）：body `{"chapters": k}`，追加目录 + 增量正文 | 已实现 |
+| POST | /projects/{id}/generate/continue-writing | 续写（open 形态）：body `{"chapters": k}`，追加目录（正文由章节页批量生成） | 已实现 |
 | POST | /projects/{id}/finalize/chapter/{num} | 定稿章节 | 待实现 |
 | POST | /projects/{id}/generate/batch | 批量生成 | 待实现 |
 
@@ -292,7 +292,7 @@ Authorization: Bearer <token>
 - 仅 `story_shape='open'` 可续写，非 open → 400「仅连载开篇（open）形态项目可续写」。
 - `chapters`（k）必须为正整数，k < 1 → 422。
 - 已锁定全书目标 M 且 `num_chapters + k > M` → 422（提示剩余可续写章数）。
-- 任务 `task_type='continue_writing'`：三步串行——更新 num_chapters → 追加目录（`_ensure_chapters(skip_existing=True)`，不覆盖已有定稿）→ 增量正文（已有 draft 章节自动跳过）；成功返回 TaskOut，前台轮询 `GET /tasks/{id}`。
+- 任务 `task_type='continue_writing'`：两步串行——更新 num_chapters → 追加目录（`_ensure_chapters(skip_existing=True)`，不覆盖已有定稿，目录资产累积落库）；**不生成正文**（正文由章节页 `batch_chapters`「AI 批量生成」确认目录后触发，增量语义跳过已有 draft）；成功返回 TaskOut，前台轮询 `GET /tasks/{id}`。
 
 响应（创建任务）：
 ```json
